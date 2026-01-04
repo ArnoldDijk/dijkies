@@ -403,3 +403,111 @@ Before stopping, the bot:
 4. Moves the bot to stopped
 
 If anything fails, the bot is moved to paused.
+
+## Deployment Quickstart
+
+In this example, we will use the earlier defined rsi strategy.
+
+### Step 1: Create and Backtest a Strategy
+
+```python
+from dijkies.executors import BacktestExchangeAssetClient, State
+from dijkies.backtest import Backtester
+
+state = State(
+    base="XRP",
+    total_base=0,
+    total_quote=1000,
+)
+
+executor = BacktestExchangeAssetClient(
+    state=state,
+    fee_market_order=0.0025,
+    fee_limit_order=0.0015,
+)
+
+strategy = RSIStrategy(
+    executor=executor,
+    lower_threshold=35,
+    higher_threshold=65,
+)
+
+results = strategy.backtest(candle_df)
+```
+
+analyse the results and decide if you want to use this strategy.
+
+### Step 2: Prepare the Strategy for Deployment
+
+After backtesting, the same strategy instance can be deployed live.
+
+#### Create a Strategy Repository
+
+```python
+from pathlib import Path
+from dijkies.bot import LocalStrategyRepository
+
+strategy_repository = LocalStrategyRepository(
+    root_directory=Path("./strategies")
+)
+```
+
+#### Store the strategy
+
+```python
+strategy_repository.store(
+    strategy=strategy,
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+This serializes the strategy and its state so it can be resumed later.
+
+### Step 3: Configure Exchange Credentials
+
+Set your exchange credentials as environment variables:
+
+```bash
+export alice_bitvavo_api_key="your_api_key"
+export alice_bitvavo_api_secret_key="your_api_secret"
+```
+
+### Step 4: Create the Bot Runtime
+
+The Bot orchestrates loading, execution, and lifecycle management.
+
+```python
+from dijkies.bot import Bot, LocalCredentialsRepository
+
+credentials_repository = LocalCredentialsRepository()
+
+bot = Bot(
+    strategy_repository=strategy_repository,
+    credential_repository=credentials_repository,
+)
+```
+
+### Step 5: Run the Strategy Live
+
+start the live trading bot
+
+```python
+bot.run(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+What Happens Under the Hood:
+1. The strategy is loaded from disk
+2. The backtest executor is replaced with BitvavoExchangeAssetClient where API credentials are injected
+3. The strategy’s data pipeline fetches live market data
+4. strategy.run() executes decision logic. Here, orders are executed on the exchange and state is modified accordingly
+5. strategy is persisted, executor and credentials not included.
+
+If an exception occurs, the bot is automatically moved to paused.
