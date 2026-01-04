@@ -79,13 +79,15 @@ It receives a rolling dataframe of candles and decides when to place orders.
 ```python
 # create strategy
 
-from dijkies.executors import ExchangeAssetClient
+from dijkies.executors import (
+    ExchangeAssetClient,
+    BacktestExchangeAssetClient,
+    State
+)
 from dijkies.strategy import Strategy
 
 from ta.momentum import RSIIndicator
 from pandas.core.frame import DataFrame as PandasDataFrame
-
-from dijkies.executors import BacktestExchangeAssetClient, State
 
 from dijkies.data_pipeline import DataPipeline, NoDataPipeline
 
