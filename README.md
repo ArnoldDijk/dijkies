@@ -307,3 +307,99 @@ This makes it easy to:
 - Inspect stored strategies
 - Build higher-level orchestration around the filesystem
 
+## Credentials Management
+
+Live trading requires exchange credentials. These are abstracted behind a CredentialsRepository.
+
+```python
+class CredentialsRepository(ABC):
+    def get_api_key(...)
+    def get_api_secret_key(...)
+```
+
+The local implementation retrieves credentials from environment variables:
+
+```bash
+export alice_bitvavo_api_key="..."
+export alice_bitvavo_api_secret_key="..."
+```
+
+```python
+import LocalCredentialsRepository
+
+credentials_repository = LocalCredentialsRepository()
+bitvavo_api_key = credentials_repository.get_api_key(
+    person_id="alice",
+    exchange="bitvavo"
+)
+```
+
+This keeps secrets out of source code and allows standard deployment practices (Docker, CI/CD, etc.).
+
+## The Bot
+
+The Bot class is the runtime orchestrator responsible for:
+
+- Loading a stored strategy
+- Injecting the correct executor
+- Running or stopping the strategy
+- Handling failures and state transitions
+
+### running the bot
+
+```python
+bot.run(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+What happens internally:
+
+1. The state of the strategy is loaded from the repository
+2. The executor is replaced with a live exchange client
+3. The strategy’s data pipeline is executed
+4. strategy.run() is called
+5. The new state of the strategy is persisted
+
+If an exception occurs:
+1. The strategy is stored
+2. The bot is automatically moved to paused
+
+### Stopping a Bot
+
+Bots can be stopped gracefully using the stop method.
+
+```python
+bot.stop(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+    asset_handling="quote_only",
+)
+```
+
+#### Asset Handling Options
+
+When stopping a bot, you must specify how assets should be handled:
+
+`quote_only`
+Sell all base assets and remain in quote currency
+
+`base_only`
+Buy base assets using all available quote currency
+
+`ignore`
+Leave balances unchanged
+
+Before stopping, the bot:
+
+1. Cancels all open orders
+2. Handles assets according to the selected mode
+3. Persists the final state
+4. Moves the bot to stopped
+
+If anything fails, the bot is moved to paused.
