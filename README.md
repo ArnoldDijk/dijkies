@@ -77,15 +77,21 @@ A strategy is a class that inherits from `Strategy` and implements the `execute`
 It receives a rolling dataframe of candles and decides when to place orders.
 
 ```python
-from dijkies.strategy import Strategy
+# create strategy
+
 from dijkies.executors import ExchangeAssetClient
+from dijkies.strategy import Strategy
+
 from ta.momentum import RSIIndicator
-import pandas as pd
+from pandas.core.frame import DataFrame as PandasDataFrame
+
+from dijkies.executors import BacktestExchangeAssetClient, State
+
+from dijkies.data_pipeline import DataPipeline, NoDataPipeline
 
 
 class RSIStrategy(Strategy):
-    # Amount of historical data passed into execute()
-    analysis_dataframe_size_in_minutes = 60 * 24 * 30  # 30 days
+    analysis_dataframe_size_in_minutes = 60*24*30
 
     def __init__(
         self,
@@ -97,25 +103,39 @@ class RSIStrategy(Strategy):
         self.higher_threshold = higher_threshold
         super().__init__(executor)
 
-    def execute(self, candle_df: pd.DataFrame) -> None:
-        candle_df["rsi"] = RSIIndicator(candle_df.close).rsi()
+    def execute(self, candle_df: PandasDataFrame) -> None:
+        candle_df["momentum_rsi"] = RSIIndicator(candle_df.close).rsi()
 
-        previous = candle_df.iloc[-2]
-        current = candle_df.iloc[-1]
+        previous_candle = candle_df.iloc[-2]
+        current_candle = candle_df.iloc[-1]
 
-        # Buy when RSI crosses below lower threshold
-        if previous.rsi > self.lower_threshold and current.rsi < self.lower_threshold:
+        is_buy_signal = (
+            previous_candle.momentum_rsi > self.lower_threshold
+            and current_candle.momentum_rsi < self.lower_threshold
+        )
+
+        if is_buy_signal:
             self.executor.place_market_buy_order(
                 self.executor.state.base,
                 self.executor.state.quote_available,
             )
 
-        # Sell when RSI crosses above higher threshold
-        if previous.rsi < self.higher_threshold and current.rsi > self.higher_threshold:
+        is_sell_signal = (
+            previous_candle.momentum_rsi < self.higher_threshold
+            and current_candle.momentum_rsi > self.higher_threshold
+        )
+
+        if is_sell_signal:
             self.executor.place_market_sell_order(
                 self.executor.state.base,
                 self.executor.state.base_available,
             )
+
+    def get_data_pipeline(self) -> DataPipeline:
+        """
+        Implement this metho
+        """
+        return NoDataPipeline()
 ```
 
 ### 2. fetch data for your backtest
@@ -124,8 +144,9 @@ Market data is provided as a pandas DataFrame containing OHLCV candles.
 ```python
 from dijkies.exchange_market_api import BitvavoMarketAPI
 
-market_api = BitvavoMarketAPI()
-candle_df = market_api.get_candles(base="XRP", lookback_in_minutest=60*24*365)
+bitvavo_market_api = BitvavoMarketAPI()
+
+candle_df = bitvavo_market_api.get_candles()
 ```
 
 ### 3. Set Up State and BacktestingExecutor
@@ -160,13 +181,129 @@ strategy = RSIStrategy(
     higher_threshold=65,
 )
 
-backtester = Backtester()
-
-results = backtester.run(
+results = strategy.backtest(
     candle_df=candle_df,
-    strategy=strategy,
 )
 
 results.total_value_strategy.plot()
 results.total_value_hodl.plot()
 ```
+
+## Deployment & Live Trading
+
+Dijkies supports deploying strategies to live trading environments using the **same strategy code** that is used for backtesting. Deployment is built around a small set of composable components that handle persistence, credentials, execution switching, and bot lifecycle management.
+
+At a high level, deployment works by:
+
+1. Persisting a configured strategy
+2. Attaching a live exchange executor
+3. Running the strategy via a `Bot`
+4. Managing lifecycle states such as *active*, *paused*, and *stopped*
+
+---
+
+## Core Deployment Concepts
+
+### Strategy Persistence
+
+Strategies are **serialized and stored** so they can be resumed, paused, or stopped without losing state.
+
+This includes:
+- Strategy parameters
+- Internal indicators or buffers
+- Account state (balances, open orders, etc.)
+
+Persistence is handled through a `StrategyRepository`.
+
+---
+
+### Strategy Status
+
+Each deployed strategy (bot) exists in one of the following states:
+
+- **active** — strategy is running normally
+- **paused** — strategy execution stopped due to an error
+- **stopped** — strategy has been intentionally stopped
+
+Status transitions are managed automatically by the deployment system.
+
+---
+
+### Executor Switching
+
+One of Dijkies’ key design goals is that **strategies do not know whether they are backtesting or live trading**.
+
+At deployment time, the executor is injected dynamically:
+
+- `BacktestExchangeAssetClient` for backtesting
+- `BitvavoExchangeAssetClient` for live trading
+
+No strategy code changes are required.
+
+---
+
+## Strategy Repository
+
+The `StrategyRepository` abstraction defines how strategies are stored and retrieved.
+
+```python
+class StrategyRepository(ABC):
+    def store(...)
+    def read(...)
+    def change_status(...)
+```
+
+### LocalStrategyRepository
+
+The provided implementation stores strategies locally using pickle.
+
+#### Directory Structure
+
+root/
+└── person_id/
+    └── exchange/
+        └── status/
+            └── bot_id.pkl
+
+```python
+from pathlib import Path
+from dijkies.bot import LocalStrategyRepository
+
+repo = LocalStrategyRepository(Path("./strategies"))
+
+# read
+
+strategy = repo.read(
+    person_id="ArnoldDijk",
+    exchange="bitvavo",
+    bot_id="rsi_bot",
+    status="active"
+)
+
+# store
+
+repo.store(
+    strategy=strategy,
+    person_id="ArnoldDijk",
+    exchange="bitvavo",
+    bot_id="berend_botje",
+    status="active"
+)
+
+# change status
+
+repo.change_status(
+    person_id="ArnoldDijk",
+    exchange="bitvavo",
+    bot_id="berend_botje",
+    from_status="active",
+    to_status="stopped",
+)
+```
+
+This makes it easy to:
+
+- Resume bots after restarts
+- Inspect stored strategies
+- Build higher-level orchestration around the filesystem
+

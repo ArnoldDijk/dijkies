@@ -321,6 +321,7 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
             filled = order.on_hold
             filled_quote = order.on_hold * order.limit_price  # type: ignore
             fee = filled_quote * fee_limit_order
+        order.fee = fee
         return Order(
             order_id=order.order_id,
             exchange=order.exchange,
