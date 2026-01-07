@@ -1,5 +1,4 @@
 import uuid
-from abc import ABC, abstractmethod
 from datetime import datetime
 
 import numpy as np
@@ -8,6 +7,7 @@ from pandas.core.series import Series as PandasSeries
 from pydantic import BaseModel
 
 from dijkies.executors import State
+from dijkies.interfaces import Metric
 
 
 class PerformanceInformationRow(BaseModel):
@@ -82,17 +82,6 @@ class PerformanceInformationRow(BaseModel):
             number_of_transactions=state.number_of_transactions,
             absolute_profit=strategy_value - initialization_value_in_quote,
         )
-
-
-class Metric(ABC):
-    @property
-    @abstractmethod
-    def metric_name(self) -> str:
-        pass
-
-    @abstractmethod
-    def calculate(self, time_series: PandasSeries) -> float:
-        pass
 
 
 class DrawDown(Metric):

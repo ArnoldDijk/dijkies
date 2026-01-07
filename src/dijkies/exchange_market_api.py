@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
@@ -10,28 +9,15 @@ from binance.client import Client
 from pandas.core.frame import DataFrame as PandasDataFrame
 from python_bitvavo_api.bitvavo import Bitvavo
 
-from dijkies.logger import get_logger
+from dijkies.interfaces import ExchangeMarketAPI
 
-
-class ExchangeMarketAPI(ABC):
-    @abstractmethod
-    def get_candles(
-        self,
-        base: str,
-        interval_in_minutes: int,
-        lookback_in_minutes: int,
-    ) -> PandasDataFrame:
-        pass
-
-    @abstractmethod
-    def get_price(self, base: str) -> float:
-        pass
+logger = logging.getLogger(__name__)
 
 
 class BinanceMarketAPI(ExchangeMarketAPI):
     def __init__(
         self,
-        logger: logging.Logger = get_logger(),
+        logger: logging.Logger = logger,
     ):
         self.logger = logger
         self.binance_data_client = Client()
@@ -71,7 +57,7 @@ class BinanceMarketAPI(ExchangeMarketAPI):
 class BitvavoMarketAPI(ExchangeMarketAPI):
     def __init__(
         self,
-        logger: logging.Logger = get_logger(),
+        logger: logging.Logger = logger,
         max_workers: int = 4,
         rate_limit_threshold: int = 50,
     ):

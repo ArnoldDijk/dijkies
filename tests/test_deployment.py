@@ -5,7 +5,7 @@ from pandas.core.frame import DataFrame as PandasDataFrame
 
 from dijkies.deployment import Bot, LocalCredentialsRepository, LocalStrategyRepository
 from dijkies.executors import Order, State
-from dijkies.strategy import Strategy
+from dijkies.interfaces import Strategy
 
 
 def fail_execute(data: PandasDataFrame) -> None:
@@ -17,7 +17,7 @@ def test_local_strategy_store_and_read(rsi_strategy: Strategy, tmp_path: Path) -
 
     strategy_repository = LocalStrategyRepository(tmp_path)
     person_id = "AD"
-    exchange = "bitvavo"
+    exchange = "backtest"
     bot_id = "ddd"
     status = "active"
 
@@ -41,7 +41,7 @@ def test_local_strategy_store_change_status(
 
     strategy_repository = LocalStrategyRepository(tmp_path)
     person_id = "AD"
-    exchange = "bitvavo"
+    exchange = "backtest"
     bot_id = "ddd"
     status_from = "active"
     status_to = "paused"
@@ -66,7 +66,7 @@ def test_bot_run_method_success(rsi_strategy: Strategy, tmp_path: Path) -> None:
     # arrange
 
     person_id = "AD"
-    exchange = "bitvavo"
+    exchange = "backtest"
     bot_id = "ddd"
     status = "active"
 
