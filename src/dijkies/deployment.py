@@ -1,53 +1,30 @@
+import logging
 import os
 import pickle
 import shutil
-from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal
 
-from dijkies.executors import (
-    SUPPORTED_EXCHANGES,
-    BacktestExchangeAssetClient,
-    BitvavoExchangeAssetClient,
+from dijkies.constants import ASSET_HANDLING, BOT_STATUS, SUPPORTED_EXCHANGES
+from dijkies.interfaces import (
+    CredentialsRepository,
+    Strategy,
+    StrategyRepository,
 )
-from dijkies.logger import get_logger
-from dijkies.strategy import Strategy
 
-BOT_STATUS = Literal["active", "paused", "stopped"]
-ASSET_HANDLING = Literal["quote_only", "base_only", "ignore"]
+logger = logging.getLogger(__name__)
 
 
-class StrategyRepository(ABC):
-    @abstractmethod
-    def store(
-        self,
-        strategy: Strategy,
-        person_id: str,
-        exchange: SUPPORTED_EXCHANGES,
-        bot_id: str,
-        status: BOT_STATUS,
-    ) -> None:
+class LocalCredentialsRepository(CredentialsRepository):
+    def get_api_key(self, person_id: str, exchange: str) -> str:
+        return os.environ.get(f"{person_id}_{exchange}_api_key")
+
+    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
         pass
 
-    @abstractmethod
-    def read(
-        self,
-        person_id: str,
-        exchange: SUPPORTED_EXCHANGES,
-        bot_id: str,
-        status: BOT_STATUS,
-    ) -> Strategy:
-        pass
+    def get_api_secret_key(self, person_id: str, exchange: str) -> str:
+        return os.environ.get(f"{person_id}_{exchange}_api_secret_key")
 
-    @abstractmethod
-    def change_status(
-        self,
-        person_id: str,
-        exchange: SUPPORTED_EXCHANGES,
-        bot_id: str,
-        from_status: BOT_STATUS,
-        to_status: BOT_STATUS,
-    ) -> None:
+    def store_api_secret_key(self, id: str, api_secret_key: str) -> None:
         pass
 
 
@@ -106,40 +83,6 @@ class LocalStrategyRepository(StrategyRepository):
         shutil.move(src, dest_folder / src.name)
 
 
-class CredentialsRepository(ABC):
-    @abstractmethod
-    def get_api_key(self, person_id: str, exchange: str) -> str:
-        pass
-
-    @abstractmethod
-    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
-        pass
-
-    @abstractmethod
-    def get_api_secret_key(self, person_id: str, exchange: str) -> str:
-        pass
-
-    @abstractmethod
-    def store_api_secret_key(
-        self, person_id: str, exchange: str, api_secret_key: str
-    ) -> None:
-        pass
-
-
-class LocalCredentialsRepository(CredentialsRepository):
-    def get_api_key(self, person_id: str, exchange: str) -> str:
-        return os.environ.get(f"{person_id}_{exchange}_api_key")
-
-    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
-        pass
-
-    def get_api_secret_key(self, person_id: str, exchange: str) -> str:
-        return os.environ.get(f"{person_id}_{exchange}_api_secret_key")
-
-    def store_api_secret_key(self, id: str, api_secret_key: str) -> None:
-        pass
-
-
 class Bot:
     def __init__(
         self,
@@ -149,26 +92,20 @@ class Bot:
         self.strategy_repository = strategy_repository
         self.credential_repository = credential_repository
 
-    def set_executor(
+    def load_strategy(
         self,
-        strategy: Strategy,
         person_id: str,
         exchange: SUPPORTED_EXCHANGES,
-    ) -> None:
-        if exchange == "bitvavo":
-            api_key = self.credential_repository.get_api_key(person_id, exchange)
-            api_secret_key = self.credential_repository.get_api_secret_key(
-                person_id, exchange
-            )
-            strategy.executor = BitvavoExchangeAssetClient(
-                strategy.state, api_key, api_secret_key, 1, get_logger()
-            )
-        elif exchange == "backtest":
-            strategy.executor = BacktestExchangeAssetClient(
-                strategy.state, 0.0025, 0.0015
-            )
-        else:
-            raise Exception("exchange not defined")
+        bot_id: str,
+        status: BOT_STATUS,
+    ) -> Strategy:
+        from dijkies.executors import get_executor
+
+        strategy = self.strategy_repository.read(person_id, exchange, bot_id, status)
+        strategy.executor = get_executor(
+            person_id, exchange, strategy.state, self.credential_repository
+        )
+        return strategy
 
     def run(
         self,
@@ -178,9 +115,7 @@ class Bot:
         status: BOT_STATUS,
     ) -> None:
 
-        strategy = self.strategy_repository.read(person_id, exchange, bot_id, status)
-        self.set_executor(strategy, person_id, exchange)
-
+        strategy = self.load_strategy(person_id, exchange, bot_id, status)
         data_pipeline = strategy.get_data_pipeline()
         data = data_pipeline.run()
 
@@ -206,11 +141,7 @@ class Bot:
         status: BOT_STATUS,
         asset_handling: ASSET_HANDLING,
     ) -> None:
-        if status == "stopped":
-            return
-
-        strategy = self.strategy_repository.read(person_id, exchange, bot_id, status)
-        self.set_executor(strategy, person_id, exchange)
+        strategy = self.load_strategy(person_id, exchange, bot_id, status)
 
         try:
             for open_order in strategy.state.open_orders:

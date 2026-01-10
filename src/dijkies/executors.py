@@ -1,202 +1,22 @@
 import logging
 import time
 import uuid
-from abc import ABC, abstractmethod
 from decimal import ROUND_DOWN, Decimal, getcontext
-from typing import Literal, Optional, Union
 
 import pandas as pd
 from pandas.core.series import Series
-from pydantic import BaseModel
 from python_bitvavo_api.bitvavo import Bitvavo
 
+from dijkies.constants import SUPPORTED_EXCHANGES
+from dijkies.entities import Order, State
 from dijkies.exceptions import (
     GetOrderInfoError,
     InsufficientBalanceError,
     InsufficientOrderValueError,
-    MultipleOrdersFoundError,
-    NoOrderFoundError,
 )
+from dijkies.interfaces import CredentialsRepository, ExchangeAssetClient
 
-SUPPORTED_EXCHANGES = Literal["bitvavo", "backtest"]
-
-
-class Order(BaseModel):
-    order_id: str
-    exchange: SUPPORTED_EXCHANGES
-    market: str
-    time_created: int
-    time_canceled: Union[int, None] = None
-    time_filled: Union[int, None] = None
-    on_hold: float = 0
-    side: Literal["buy", "sell"]
-    limit_price: Optional[float] = None
-    actual_price: Optional[float] = None
-    filled: float = 0
-    filled_quote: float = 0
-    fee: float = 0
-    is_taker: bool
-    status: Literal["open", "filled", "cancelled"]
-
-    @property
-    def is_filled(self) -> bool:
-        return self.status == "filled"
-
-    @property
-    def is_open(self) -> bool:
-        return self.status == "open"
-
-    @property
-    def is_cancelled(self) -> bool:
-        return self.status == "cancelled"
-
-    def is_equal(self, order: "Order") -> bool:
-        return self.status == order.status
-
-    def is_not_equal(self, order: "Order") -> bool:
-        return not self.is_equal(order)
-
-
-class State(BaseModel):
-    base: str
-    total_base: float
-    total_quote: float
-    orders: list[Order] = []
-
-    @property
-    def number_of_transactions(self) -> int:
-        return len(self.filled_orders)
-
-    @property
-    def total_fee_paid(self) -> float:
-        return sum([o.fee for o in self.filled_orders])
-
-    @property
-    def filled_orders(self) -> list[Order]:
-        return [o for o in self.orders if o.is_filled]
-
-    @property
-    def open_orders(self) -> list[Order]:
-        return [o for o in self.orders if o.is_open]
-
-    @property
-    def cancelled_orders(self) -> list[Order]:
-        return [o for o in self.orders if o.is_cancelled]
-
-    @property
-    def base_on_hold(self) -> float:
-        return sum([order.on_hold for order in self.sell_orders])
-
-    @property
-    def quote_on_hold(self) -> float:
-        return sum([order.on_hold for order in self.buy_orders])
-
-    @property
-    def base_available(self) -> float:
-        return self.total_base - self.base_on_hold
-
-    @property
-    def quote_available(self) -> float:
-        return self.total_quote - self.quote_on_hold
-
-    @property
-    def buy_orders(self) -> list[Order]:
-        return [o for o in self.open_orders if o.side == "buy"]
-
-    @property
-    def sell_orders(self) -> list[Order]:
-        return [o for o in self.open_orders if o.side == "sell"]
-
-    def add_order(self, order: Order) -> None:
-        self.orders.append(order)
-
-    def get_order(self, order_id: str) -> Order:
-        list_found_order = [o for o in self.orders if o.order_id == order_id]
-        if len(list_found_order) == 0:
-            raise NoOrderFoundError(order_id)
-        elif len(list_found_order) > 1:
-            raise MultipleOrdersFoundError(order_id)
-        return list_found_order[0]
-
-    def cancel_order(self, order: Order) -> None:
-        found_order = self.get_order(order.order_id)
-        found_order.status = "cancelled"
-
-    def process_filled_order(self, filled_order: Order) -> None:
-        if filled_order.side == "buy":
-            quote_mutation = -(filled_order.filled_quote + filled_order.fee)
-            base_mutation = filled_order.filled
-        else:
-            quote_mutation = filled_order.filled_quote - filled_order.fee
-            base_mutation = -filled_order.filled
-
-        self.total_quote += quote_mutation
-        self.total_base += base_mutation
-
-        if filled_order.is_taker:
-            self.add_order(filled_order)
-        else:
-            found_order = self.get_order(filled_order.order_id)
-            found_order.status = "filled"
-
-        self._check_non_negative()
-
-    def _check_non_negative(self) -> None:
-        if self.base_available < -1e-9:
-            raise ValueError(f"Negative base balance: {self.base_available}")
-        if self.quote_available < -1e-9:
-            raise ValueError(f"Negative quote balance: {self.quote_available}")
-
-    def total_value_in_base(self, price: float) -> float:
-        return self.total_base + self.total_quote / price
-
-    def total_value_in_quote(self, price: float) -> float:
-        return self.total_quote + self.total_base * price
-
-    def fraction_value_in_quote(self, price: float) -> float:
-        return self.total_quote / max(self.total_value_in_quote(price), 0.00000001)
-
-    def fraction_value_in_base(self, price: float) -> float:
-        return 1 - self.fraction_value_in_quote(price)
-
-
-class ExchangeAssetClient(ABC):
-    def __init__(self, state: State) -> None:
-        self.state = state
-
-    @abstractmethod
-    def place_limit_buy_order(
-        self, base: str, limit_price: float, amount_in_quote: float
-    ) -> Order:
-        pass
-
-    @abstractmethod
-    def place_limit_sell_order(
-        self, base: str, limit_price: float, amount_in_base: float
-    ) -> Order:
-        pass
-
-    @abstractmethod
-    def place_market_buy_order(self, base: str, amount_in_quote: float) -> Order:
-        pass
-
-    @abstractmethod
-    def place_market_sell_order(self, base: str, amount_in_base: float) -> Order:
-        pass
-
-    @abstractmethod
-    def get_order_info(self, order: Order) -> Order:
-        pass
-
-    @abstractmethod
-    def cancel_order(self, order: Order) -> Order:
-        pass
-
-    def update_state(self) -> None:
-        for order in self.state.open_orders:
-            newest_info_order = self.get_order_info(order)
-            if order.is_not_equal(newest_info_order):
-                self.state.process_filled_order(newest_info_order)
+logger = logging.getLogger(__name__)
 
 
 class BacktestExchangeAssetClient(ExchangeAssetClient):
@@ -207,6 +27,9 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
         self.fee_market_order = fee_market_order
         self.fee_limit_order = fee_limit_order
         self.current_candle = pd.Series({"high": 80000, "low": 78000, "close": 79000})
+
+    def assets_in_state_are_available(self) -> bool:
+        return True
 
     def update_current_candle(self, current_candle: Series) -> None:
         self.current_candle = current_candle
@@ -321,7 +144,6 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
             filled = order.on_hold
             filled_quote = order.on_hold * order.limit_price  # type: ignore
             fee = filled_quote * fee_limit_order
-        order.fee = fee
         return Order(
             order_id=order.order_id,
             exchange=order.exchange,
@@ -379,7 +201,6 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         bitvavo_api_key: str,
         bitvavo_api_secret_key: str,
         operator_id: int,
-        logger: logging.Logger,
     ) -> None:
         super().__init__(state)
         self.operator_id = operator_id
@@ -393,7 +214,20 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 "DEBUGGING": False,
             }
         )
-        self.logger = logger
+
+    def assets_in_state_are_available(self) -> bool:
+        base_response = self.bitvavo.balance({"symbol": self.state.base})
+        quote_response = self.bitvavo.balance({"symbol": "EUR"})
+
+        balance_base = float(base_response[0]["available"]) if base_response else 0
+        balance_quote = float(quote_response[0]["available"]) if quote_response else 0
+        base_is_available = self.state.total_base <= balance_base
+        quote_is_available = self.state.total_quote <= balance_quote
+
+        logger.info(balance_base, self.state.total_base)
+        logger.info(balance_quote, self.state.total_quote)
+
+        return base_is_available and quote_is_available
 
     def quantity_decimals(self, base: str) -> int:
         trading_pair = base + "-EUR"
@@ -595,3 +429,22 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             if response["errorCode"] != 240:
                 raise GetOrderInfoError(response)
         self.state.cancel_order(order)
+        return order
+
+
+def get_executor(
+    person_id: str,
+    exchange: SUPPORTED_EXCHANGES,
+    state: State,
+    credentials_repository: CredentialsRepository,
+) -> ExchangeAssetClient:
+    if exchange == "bitvavo":
+        api_key = credentials_repository.get_api_key(person_id, exchange)
+        api_secret_key = credentials_repository.get_api_secret_key(person_id, exchange)
+        return BitvavoExchangeAssetClient(state, api_key, api_secret_key, operator_id=1)
+    elif exchange == "backtest":
+        return BacktestExchangeAssetClient(
+            state, fee_market_order=0.0025, fee_limit_order=0.0015
+        )
+    else:
+        raise ValueError(f"Unsupported exchange: {exchange}")

@@ -79,13 +79,15 @@ It receives a rolling dataframe of candles and decides when to place orders.
 ```python
 # create strategy
 
-from dijkies.executors import ExchangeAssetClient
+from dijkies.executors import (
+    ExchangeAssetClient,
+    BacktestExchangeAssetClient,
+    State
+)
 from dijkies.strategy import Strategy
 
 from ta.momentum import RSIIndicator
 from pandas.core.frame import DataFrame as PandasDataFrame
-
-from dijkies.executors import BacktestExchangeAssetClient, State
 
 from dijkies.data_pipeline import DataPipeline, NoDataPipeline
 
@@ -116,8 +118,8 @@ class RSIStrategy(Strategy):
 
         if is_buy_signal:
             self.executor.place_market_buy_order(
-                self.executor.state.base,
-                self.executor.state.quote_available,
+                self.state.base,
+                self.state.quote_available,
             )
 
         is_sell_signal = (
@@ -127,8 +129,8 @@ class RSIStrategy(Strategy):
 
         if is_sell_signal:
             self.executor.place_market_sell_order(
-                self.executor.state.base,
-                self.executor.state.base_available,
+                self.state.base,
+                self.state.base_available,
             )
 
     def get_data_pipeline(self) -> DataPipeline:
@@ -307,3 +309,207 @@ This makes it easy to:
 - Inspect stored strategies
 - Build higher-level orchestration around the filesystem
 
+## Credentials Management
+
+Live trading requires exchange credentials. These are abstracted behind a CredentialsRepository.
+
+```python
+class CredentialsRepository(ABC):
+    def get_api_key(...)
+    def get_api_secret_key(...)
+```
+
+The local implementation retrieves credentials from environment variables:
+
+```bash
+export alice_bitvavo_api_key="..."
+export alice_bitvavo_api_secret_key="..."
+```
+
+```python
+import LocalCredentialsRepository
+
+credentials_repository = LocalCredentialsRepository()
+bitvavo_api_key = credentials_repository.get_api_key(
+    person_id="alice",
+    exchange="bitvavo"
+)
+```
+
+This keeps secrets out of source code and allows standard deployment practices (Docker, CI/CD, etc.).
+
+## The Bot
+
+The Bot class is the runtime orchestrator responsible for:
+
+- Loading a stored strategy
+- Injecting the correct executor
+- Running or stopping the strategy
+- Handling failures and state transitions
+
+### running the bot
+
+```python
+bot.run(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+What happens internally:
+
+1. The state of the strategy is loaded from the repository
+2. The executor is replaced with a live exchange client
+3. The strategy’s data pipeline is executed
+4. strategy.run() is called
+5. The new state of the strategy is persisted
+
+If an exception occurs:
+1. The strategy is stored
+2. The bot is automatically moved to paused
+
+### Stopping a Bot
+
+Bots can be stopped gracefully using the stop method.
+
+```python
+bot.stop(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+    asset_handling="quote_only",
+)
+```
+
+#### Asset Handling Options
+
+When stopping a bot, you must specify how assets should be handled:
+
+`quote_only`
+Sell all base assets and remain in quote currency
+
+`base_only`
+Buy base assets using all available quote currency
+
+`ignore`
+Leave balances unchanged
+
+Before stopping, the bot:
+
+1. Cancels all open orders
+2. Handles assets according to the selected mode
+3. Persists the final state
+4. Moves the bot to stopped
+
+If anything fails, the bot is moved to paused.
+
+## Deployment Quickstart
+
+In this example, we will use the earlier defined rsi strategy.
+
+### Step 1: Create and Backtest a Strategy
+
+```python
+from dijkies.executors import BacktestExchangeAssetClient, State
+from dijkies.backtest import Backtester
+
+state = State(
+    base="XRP",
+    total_base=0,
+    total_quote=1000,
+)
+
+executor = BacktestExchangeAssetClient(
+    state=state,
+    fee_market_order=0.0025,
+    fee_limit_order=0.0015,
+)
+
+strategy = RSIStrategy(
+    executor=executor,
+    lower_threshold=35,
+    higher_threshold=65,
+)
+
+results = strategy.backtest(candle_df)
+```
+
+analyse the results and decide if you want to use this strategy.
+
+### Step 2: Prepare the Strategy for Deployment
+
+After backtesting, the same strategy instance can be deployed live.
+
+#### Create a Strategy Repository
+
+```python
+from pathlib import Path
+from dijkies.bot import LocalStrategyRepository
+
+strategy_repository = LocalStrategyRepository(
+    root_directory=Path("./strategies")
+)
+```
+
+#### Store the strategy
+
+```python
+strategy_repository.store(
+    strategy=strategy,
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+This serializes the strategy and its state so it can be resumed later.
+
+### Step 3: Configure Exchange Credentials
+
+Set your exchange credentials as environment variables:
+
+```bash
+export alice_bitvavo_api_key="your_api_key"
+export alice_bitvavo_api_secret_key="your_api_secret"
+```
+
+### Step 4: Create the Bot Runtime
+
+The Bot orchestrates loading, execution, and lifecycle management.
+
+```python
+from dijkies.bot import Bot, LocalCredentialsRepository
+
+credentials_repository = LocalCredentialsRepository()
+
+bot = Bot(
+    strategy_repository=strategy_repository,
+    credential_repository=credentials_repository,
+)
+```
+
+### Step 5: Run the Strategy Live
+
+start the live trading bot
+
+```python
+bot.run(
+    person_id="alice",
+    exchange="bitvavo",
+    bot_id="rsi-xrp",
+    status="active",
+)
+```
+
+What Happens Under the Hood:
+1. The strategy is loaded from disk
+2. The backtest executor is replaced with BitvavoExchangeAssetClient where API credentials are injected
+3. The strategy’s data pipeline fetches live market data
+4. strategy.run() executes decision logic. Here, orders are executed on the exchange and state is modified accordingly
+5. strategy is persisted, executor and credentials not included.
+
+If an exception occurs, the bot is automatically moved to paused.

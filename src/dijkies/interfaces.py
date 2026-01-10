@@ -1,11 +1,14 @@
 import inspect
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 import pandas as pd
 from pandas.core.frame import DataFrame as PandasDataFrame
+from pandas.core.series import Series as PandasSeries
 
-from dijkies.data_pipeline import DataPipeline
+from dijkies.constants import BOT_STATUS, SUPPORTED_EXCHANGES
+from dijkies.entities import Order, State
 from dijkies.exceptions import (
     DataTimeWindowShorterThanSuggestedAnalysisWindowError,
     InvalidExchangeAssetClientError,
@@ -13,8 +16,84 @@ from dijkies.exceptions import (
     MissingOHLCVColumnsError,
     TimeColumnNotDefinedError,
 )
-from dijkies.executors import BacktestExchangeAssetClient, ExchangeAssetClient
 from dijkies.performance import PerformanceInformationRow
+
+logger = logging.getLogger(__name__)
+
+
+class Metric(ABC):
+    @property
+    @abstractmethod
+    def metric_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def calculate(self, time_series: PandasSeries) -> float:
+        pass
+
+
+class DataPipeline(ABC):
+    @abstractmethod
+    def run(self) -> PandasDataFrame:
+        pass
+
+
+class ExchangeMarketAPI(ABC):
+    @abstractmethod
+    def get_candles(
+        self,
+        base: str,
+        interval_in_minutes: int,
+        lookback_in_minutes: int,
+    ) -> PandasDataFrame:
+        pass
+
+    @abstractmethod
+    def get_price(self, base: str) -> float:
+        pass
+
+
+class ExchangeAssetClient(ABC):
+    def __init__(self, state: State) -> None:
+        self.state = state
+
+    @abstractmethod
+    def assets_in_state_are_available(self) -> bool:
+        pass
+
+    @abstractmethod
+    def place_limit_buy_order(
+        self, base: str, limit_price: float, amount_in_quote: float
+    ) -> Order:
+        pass
+
+    @abstractmethod
+    def place_limit_sell_order(
+        self, base: str, limit_price: float, amount_in_base: float
+    ) -> Order:
+        pass
+
+    @abstractmethod
+    def place_market_buy_order(self, base: str, amount_in_quote: float) -> Order:
+        pass
+
+    @abstractmethod
+    def place_market_sell_order(self, base: str, amount_in_base: float) -> Order:
+        pass
+
+    @abstractmethod
+    def get_order_info(self, order: Order) -> Order:
+        pass
+
+    @abstractmethod
+    def cancel_order(self, order: Order) -> Order:
+        pass
+
+    def update_state(self) -> None:
+        for order in self.state.open_orders:
+            newest_info_order = self.get_order_info(order)
+            if order.is_not_equal(newest_info_order):
+                self.state.process_filled_order(newest_info_order)
 
 
 class Strategy(ABC):
@@ -74,8 +153,11 @@ class Strategy(ABC):
 
     def backtest(self, data: PandasDataFrame) -> PandasDataFrame:
         """
-        This method runs the backtest. It expects data, this should have the following properties:
+        This method runs the backtest.
+        It expects data, this should have the following properties:
         """
+
+        from dijkies.executors import BacktestExchangeAssetClient
 
         # validate args
 
@@ -127,3 +209,57 @@ class Strategy(ABC):
             )
 
         return pd.DataFrame([r.model_dump() for r in result])
+
+
+class StrategyRepository(ABC):
+    @abstractmethod
+    def store(
+        self,
+        strategy: Strategy,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        status: BOT_STATUS,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def read(
+        self,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        status: BOT_STATUS,
+    ) -> Strategy:
+        pass
+
+    @abstractmethod
+    def change_status(
+        self,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        from_status: BOT_STATUS,
+        to_status: BOT_STATUS,
+    ) -> None:
+        pass
+
+
+class CredentialsRepository(ABC):
+    @abstractmethod
+    def get_api_key(self, person_id: str, exchange: str) -> str:
+        pass
+
+    @abstractmethod
+    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
+        pass
+
+    @abstractmethod
+    def get_api_secret_key(self, person_id: str, exchange: str) -> str:
+        pass
+
+    @abstractmethod
+    def store_api_secret_key(
+        self, person_id: str, exchange: str, api_secret_key: str
+    ) -> None:
+        pass

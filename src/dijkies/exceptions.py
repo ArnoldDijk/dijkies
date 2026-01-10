@@ -11,7 +11,10 @@ class InvalidTypeForTimeColumnError(Exception):
 class DataTimeWindowShorterThanSuggestedAnalysisWindowError(Exception):
     def __init__(self):
         super().__init__(
-            "the timespan of provided data is shorter than the analysis window, so no backtest can be executed."
+            """
+            the timespan of provided data is shorter than the analysis window,
+            so no backtest can be executed.
+            """
         )
 
 

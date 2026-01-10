@@ -1,15 +1,7 @@
-from abc import ABC, abstractmethod
-
 import pandas as pd
 from pandas.core.frame import DataFrame as PandasDataFrame
 
-from dijkies.exchange_market_api import ExchangeMarketAPI
-
-
-class DataPipeline(ABC):
-    @abstractmethod
-    def run(self) -> PandasDataFrame:
-        pass
+from dijkies.interfaces import DataPipeline, ExchangeMarketAPI
 
 
 class NoDataPipeline(DataPipeline):

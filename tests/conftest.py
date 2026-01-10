@@ -7,10 +7,15 @@ import pytest
 from pandas.core.frame import DataFrame as PandasDataFrame
 from ta.momentum import RSIIndicator
 
-from dijkies import ExchangeAssetClient, Strategy
-from dijkies.data_pipeline import DataPipeline, OHLCVDataPipeline
+from dijkies.data_pipeline import OHLCVDataPipeline
 from dijkies.exchange_market_api import BitvavoMarketAPI
-from dijkies.executors import BacktestExchangeAssetClient, Order, State
+from dijkies.executors import (
+    BacktestExchangeAssetClient,
+    ExchangeAssetClient,
+    Order,
+    State,
+)
+from dijkies.interfaces import DataPipeline, Strategy
 
 
 class RSIStrategy(Strategy):

@@ -1,6 +1,6 @@
 from pandas.core.frame import DataFrame as PandasDataFrame
 
-from dijkies.strategy import Strategy
+from dijkies.interfaces import Strategy
 
 
 def test_backest(candle_df: PandasDataFrame, rsi_strategy: Strategy) -> None:

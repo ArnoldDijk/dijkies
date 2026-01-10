@@ -1,13 +1,14 @@
+import logging
+
 from pandas.core.frame import DataFrame as PandasDataFrame
 
 from dijkies.exchange_market_api import BitvavoMarketAPI
-from dijkies.logger import get_logger
 
 
 def test_bitvavo_market_api() -> None:
     # arrange
 
-    logger = get_logger()
+    logger = logging.getLogger(__name__)
 
     bitvavo_market_api = BitvavoMarketAPI(logger)
 
