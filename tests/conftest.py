@@ -4,9 +4,10 @@ import uuid
 
 import pandas as pd
 import pytest
+from dotenv import load_dotenv
 from pandas.core.frame import DataFrame as PandasDataFrame
-from ta.momentum import RSIIndicator
 from python_bitvavo_api.bitvavo import Bitvavo
+from ta.momentum import RSIIndicator
 
 from dijkies.data_pipeline import OHLCVDataPipeline
 from dijkies.exchange_market_api import BitvavoMarketAPI
@@ -18,8 +19,6 @@ from dijkies.executors import (
     State,
 )
 from dijkies.interfaces import DataPipeline, Strategy
-
-from dotenv import load_dotenv
 
 
 class RSIStrategy(Strategy):
@@ -158,11 +157,9 @@ def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
     )
 
     return BitvavoExchangeAssetClient(
-        state,
-        os.environ.get("api"),
-        os.environ.get("secret_key"),
-        1
+        state, os.environ.get("api"), os.environ.get("secret_key"), 1
     )
+
 
 @pytest.fixture
 def bitvavo_market_api() -> BitvavoMarketAPI:

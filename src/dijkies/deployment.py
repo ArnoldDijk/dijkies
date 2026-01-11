@@ -5,13 +5,12 @@ import shutil
 from pathlib import Path
 
 from dijkies.constants import ASSET_HANDLING, BOT_STATUS, SUPPORTED_EXCHANGES
+from dijkies.exceptions import AssetNotAvailableError
 from dijkies.interfaces import (
     CredentialsRepository,
     Strategy,
     StrategyRepository,
 )
-from dijkies.exceptions import AssetNotAvailableError
-
 
 logger = logging.getLogger(__name__)
 

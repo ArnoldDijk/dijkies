@@ -1,17 +1,19 @@
 import pytest
 
-from dijkies.interfaces import ExchangeAssetClient
-from dijkies.executors import BitvavoExchangeAssetClient
 from dijkies.entities import Order
 from dijkies.exchange_market_api import BitvavoMarketAPI
+from dijkies.executors import BitvavoExchangeAssetClient
+from dijkies.interfaces import ExchangeAssetClient
 
 
 def state_is_in_sync_with_bitvavo(
-    bitvavo_exchange_asset_client: BitvavoExchangeAssetClient
+    bitvavo_exchange_asset_client: BitvavoExchangeAssetClient,
 ) -> bool:
     state = bitvavo_exchange_asset_client.state
 
-    base_response = bitvavo_exchange_asset_client.bitvavo.balance({"symbol": bitvavo_exchange_asset_client.state.base})
+    base_response = bitvavo_exchange_asset_client.bitvavo.balance(
+        {"symbol": bitvavo_exchange_asset_client.state.base}
+    )
     quote_response = bitvavo_exchange_asset_client.bitvavo.balance({"symbol": "EUR"})
 
     available_base = float(base_response[0]["available"]) if base_response else 0
@@ -34,7 +36,7 @@ def state_is_in_sync_with_bitvavo(
 
 @pytest.mark.exchange
 def test_bitvavo_exchange_asset_client_place_market_buy_order(
-    bitvavo_exchange_asset_client: ExchangeAssetClient
+    bitvavo_exchange_asset_client: ExchangeAssetClient,
 ) -> None:
 
     # act
@@ -49,7 +51,7 @@ def test_bitvavo_exchange_asset_client_place_market_buy_order(
 
 @pytest.mark.exchange
 def test_bitvavo_exchange_asset_client_place_market_sell_order(
-    bitvavo_exchange_asset_client: ExchangeAssetClient
+    bitvavo_exchange_asset_client: ExchangeAssetClient,
 ) -> None:
 
     # act
@@ -165,5 +167,5 @@ def test_bitvavo_exchange_asset_client_place_limit_sell_order_below_price(
         limit_price, amount_in_base
     )
 
-    assert order.status == "filled" 
+    assert order.status == "filled"
     assert state_is_in_sync_with_bitvavo(bitvavo_exchange_asset_client)

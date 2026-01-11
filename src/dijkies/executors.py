@@ -229,12 +229,29 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         in_order_base_is_available = self.state.base_on_hold <= in_order_base
         in_order_quote_is_available = self.state.quote_on_hold <= in_order_quote
 
-        logger.info(f"base available exchange: {available_base}", f"base available state: {self.state.base_available}")
-        logger.info(f"quote available exchange: {available_quote}", f"quote available state: {self.state.quote_available}")
-        logger.info(f"base in order exchange: {in_order_base}", f"base on hold state: {self.state.base_on_hold}")
-        logger.info(f"quote in order exchange: {in_order_quote}", f"quote on hold state: {self.state.quote_on_hold}")
+        logger.info(
+            f"base available exchange: {available_base}",
+            f"base available state: {self.state.base_available}",
+        )
+        logger.info(
+            f"quote available exchange: {available_quote}",
+            f"quote available state: {self.state.quote_available}",
+        )
+        logger.info(
+            f"base in order exchange: {in_order_base}",
+            f"base on hold state: {self.state.base_on_hold}",
+        )
+        logger.info(
+            f"quote in order exchange: {in_order_quote}",
+            f"quote on hold state: {self.state.quote_on_hold}",
+        )
 
-        return base_is_available and quote_is_available and in_order_base_is_available and in_order_quote_is_available
+        return (
+            base_is_available
+            and quote_is_available
+            and in_order_base_is_available
+            and in_order_quote_is_available
+        )
 
     def quantity_decimals(self) -> int:
         trading_pair = self.state.base + "-EUR"
@@ -290,7 +307,15 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             (float(amount_in_quote) - 0.01) / (limit_price * (1 + self.max_fee)),
             self.quantity_decimals(),
         )
-        logger.info(f"place limit buy order; market: {trading_pair}, limitPrice: {limit_price}, amount: {amount_in_base}, operatorId: {self.operator_id}")
+        logger.info(
+            f"""
+            place limit buy order;
+            market: {trading_pair}
+            limitPrice: {limit_price}
+            amount: {amount_in_base}
+            operatorId: {self.operator_id}
+"""
+        )
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="buy",
@@ -343,7 +368,15 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         )
 
         limit_price = self.__closest_valid_price(price=float(limit_price))
-        logger.info(f"place limit sell order; market: {trading_pair}, amount: {amount_in_base}, price: {limit_price}, operatorId: {self.operator_id}")
+        logger.info(
+            f"""
+            place limit sell order
+            market: {trading_pair}
+            amount: {amount_in_base}
+            price: {limit_price}
+            operatorId: {self.operator_id}
+            """
+        )
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="sell",
@@ -387,7 +420,14 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         trading_pair = self.state.base + "-EUR"
 
         amount_in_quote = str(round(float(amount_in_quote), 2))
-        logger.info(f"place market buy order; market: {trading_pair}, amountQuote: {amount_in_quote}, operatorId: {self.operator_id}")
+        logger.info(
+            f"""
+            place market buy order
+            market: {trading_pair}
+            amountQuote: {amount_in_quote}
+            operatorId: {self.operator_id}
+            """
+        )
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="buy",
@@ -425,7 +465,14 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             (float(amount_in_base) // factor) * factor,
             quantity_decimals,
         )
-        logger.info(f"place market sell order; market: {trading_pair}, amount: {amount_in_base}, operatorId: {self.operator_id}")
+        logger.info(
+            f"""
+            place market sell order
+            market: {trading_pair}
+            amount: {amount_in_base}
+            operatorId: {self.operator_id}
+            """
+        )
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="sell",

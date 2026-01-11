@@ -43,7 +43,7 @@ Dijkies is designed for:
 
 - Data Scientists building algorithmic trading systems
 - Quantitative traders who want full control over strategy logic
-- Anyone who wants to move from backtesting to production without focussing on 
+- Anyone who wants to move from backtesting to production without focussing on
 
 ## What Dijkies Is Not
 
@@ -63,7 +63,7 @@ This quick start shows how to define a strategy, fetch market data, and run a ba
 
 A strategy is a class that inherits from `Strategy` and implements the `execute` and  `get_data_pipeline` method.
 the execute method receives a pandas dataframe that should, at least, contain `open`, `high`, `low`, `close`, `volume` and `candle_time` columns.
-more can be added, and used within your trading algorithm. The engineering of these columns falls outside of dijkies scope. 
+more can be added, and used within your trading algorithm. The engineering of these columns falls outside of dijkies scope.
 
 This data is then used to define and execute actions. The following actions are available (see docstrings in dijkies.interfaces.ExchangeAssetClient for more info):
 
@@ -408,8 +408,8 @@ If anything fails, the bot is moved to paused.
 ## Deployment locally Quickstart
 
 In this example, we will continue from the earlier defined rsi strategy.
-we ended at the moment we executed the backtest. Now suppose we decide to use this algorithm with real money. 
-Then we have to deploy the strategy. In this example we will deploy locally. 
+we ended at the moment we executed the backtest. Now suppose we decide to use this algorithm with real money.
+Then we have to deploy the strategy. In this example we will deploy locally.
 
 ### Step 1: Prepare the Strategy for Deployment
 
@@ -500,13 +500,11 @@ while True:
         )
     except Exception as e:
         print("an error occured: ", e)
-    
+
     t = datetime.now(tz=timezone.utc)
     minutes_left = 5 - t.minute%5
     time.sleep((minutes_left - 1)*60 + (60 - t.seconds))
-    
+
 ```
 
 However, it is much better to use orchestration tools like Apache Airflow. Many bots can be run in parallel using the fan-in/fan-out principle.
-
-
