@@ -468,9 +468,9 @@ start the live trading bot
 
 ```python
 bot.run(
-    person_id="alice",
+    person_id="ArnoldDijk",
     exchange="bitvavo",
-    bot_id="rsi-xrp",
+    bot_id="berend_botje",
     status="active",
 )
 ```
@@ -493,9 +493,9 @@ from datetime import datetime, timezone
 while True:
     try:
         bot.run(
-            person_id="alice",
+            person_id="ArnoldDijk",
             exchange="bitvavo",
-            bot_id="rsi-xrp",
+            bot_id="berend_botje",
             status="active",
         )
     except Exception as e:
