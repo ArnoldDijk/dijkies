@@ -84,3 +84,12 @@ class InsufficientOrderValueError(Exception):
             order value should be at least 5 euro:
             """
         )
+
+
+class AssetNotAvailableError(Exception):
+    def __init__(self, asset: str):
+        super().__init__(
+            f"""
+            the asset {asset} in the strategy state is not available in the exchange.
+            """
+        )

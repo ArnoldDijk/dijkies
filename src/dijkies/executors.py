@@ -219,15 +219,22 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         base_response = self.bitvavo.balance({"symbol": self.state.base})
         quote_response = self.bitvavo.balance({"symbol": "EUR"})
 
-        balance_base = float(base_response[0]["available"]) if base_response else 0
-        balance_quote = float(quote_response[0]["available"]) if quote_response else 0
-        base_is_available = self.state.total_base <= balance_base
-        quote_is_available = self.state.total_quote <= balance_quote
+        available_base = float(base_response[0]["available"]) if base_response else 0
+        available_quote = float(quote_response[0]["available"]) if quote_response else 0
+        in_order_base = float(base_response[0]["inOrder"]) if base_response else 0
+        in_order_quote = float(quote_response[0]["inOrder"]) if quote_response else 0
 
-        logger.info(balance_base, self.state.total_base)
-        logger.info(balance_quote, self.state.total_quote)
+        base_is_available = self.state.base_available <= available_base
+        quote_is_available = self.state.quote_available <= available_quote
+        in_order_base_is_available = self.state.base_on_hold <= in_order_base
+        in_order_quote_is_available = self.state.quote_on_hold <= in_order_quote
 
-        return base_is_available and quote_is_available
+        logger.info(f"base available exchange: {available_base}", f"base available state: {self.state.base_available}")
+        logger.info(f"quote available exchange: {available_quote}", f"quote available state: {self.state.quote_available}")
+        logger.info(f"base in order exchange: {in_order_base}", f"base on hold state: {self.state.base_on_hold}")
+        logger.info(f"quote in order exchange: {in_order_quote}", f"quote on hold state: {self.state.quote_on_hold}")
+
+        return base_is_available and quote_is_available and in_order_base_is_available and in_order_quote_is_available
 
     def quantity_decimals(self) -> int:
         trading_pair = self.state.base + "-EUR"
@@ -257,14 +264,16 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
 
     def get_balance_base(self) -> dict[str, float]:
         balance = self.bitvavo.balance({"symbol": self.state.base})
+        logger.info(f"response Balance base: {balance}")
         if balance:
             balance = balance[0]
         else:
             balance = {"available": 0, "inOrder": 0}
         return balance
-    
+
     def get_balance_quote(self) -> dict[str, float]:
         balance = self.bitvavo.balance({"symbol": "EUR"})
+        logger.info(f"response Balance quote: {balance}")
         if balance:
             balance = balance[0]
         else:
@@ -281,7 +290,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             (float(amount_in_quote) - 0.01) / (limit_price * (1 + self.max_fee)),
             self.quantity_decimals(),
         )
-
+        logger.info(f"place limit buy order; market: {trading_pair}, limitPrice: {limit_price}, amount: {amount_in_base}, operatorId: {self.operator_id}")
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="buy",
@@ -292,6 +301,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 "operatorId": self.operator_id,
             },
         )
+        logger.info(f"place limit buy order response: {response}")
         if "errorCode" in response:
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
@@ -333,7 +343,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         )
 
         limit_price = self.__closest_valid_price(price=float(limit_price))
-
+        logger.info(f"place limit sell order; market: {trading_pair}, amount: {amount_in_base}, price: {limit_price}, operatorId: {self.operator_id}")
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="sell",
@@ -344,6 +354,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 "operatorId": self.operator_id,
             },
         )
+        logger.info(f"place limit sell order response: {response}")
         if "errorCode" in response:
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
@@ -376,13 +387,14 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         trading_pair = self.state.base + "-EUR"
 
         amount_in_quote = str(round(float(amount_in_quote), 2))
-
+        logger.info(f"place market buy order; market: {trading_pair}, amountQuote: {amount_in_quote}, operatorId: {self.operator_id}")
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="buy",
             orderType="market",
             body={"amountQuote": amount_in_quote, "operatorId": self.operator_id},
         )
+        logger.info(f"place market buy order response: {response}")
         if "errorCode" in response:
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
@@ -413,12 +425,14 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             (float(amount_in_base) // factor) * factor,
             quantity_decimals,
         )
+        logger.info(f"place market sell order; market: {trading_pair}, amount: {amount_in_base}, operatorId: {self.operator_id}")
         response = self.bitvavo.placeOrder(
             market=trading_pair,
             side="sell",
             orderType="market",
             body={"amount": str(amount_in_base), "operatorId": self.operator_id},
         )
+        logger.info(f"place market sell order response: {response}")
         if "errorCode" in response:
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
@@ -443,6 +457,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
     def get_order_info(self, order: Order) -> Order:
 
         response = self.bitvavo.getOrder(market=order.market, orderId=order.order_id)
+        logger.info(f"get order info response: {response}")
         if "errorCode" in response:
             if response["errorCode"] == 240:
                 raise GetOrderInfoError(response)
@@ -454,6 +469,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             orderId=order.order_id,
             operatorId=self.operator_id,
         )
+        logger.info(f"cancel order response: {response}")
         if "errorCode" in response:
             if response["errorCode"] != 240:
                 raise GetOrderInfoError(response)

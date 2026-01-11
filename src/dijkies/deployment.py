@@ -10,6 +10,8 @@ from dijkies.interfaces import (
     Strategy,
     StrategyRepository,
 )
+from dijkies.exceptions import AssetNotAvailableError
+
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,8 @@ class Bot:
         data = data_pipeline.run()
 
         try:
+            if not strategy.executor.assets_in_state_are_available():
+                raise AssetNotAvailableError(strategy.state.base)
             strategy.run(data)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status

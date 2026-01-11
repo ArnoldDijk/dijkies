@@ -133,10 +133,9 @@ def open_buy_order() -> Order:
         is_taker=False,
     )
 
+
 @pytest.fixture
 def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
-    # arrange
-
     load_dotenv()
 
     bitvavo = Bitvavo(
@@ -150,6 +149,21 @@ def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
         }
     )
 
-    balance = bitvavo.balance({"symbol": "BTC"})
+    balance_base = bitvavo.balance({"symbol": "BTC"})
+    balance_quote = bitvavo.balance({"symbol": "EUR"})
+    state = State(
+        base="BTC",
+        total_base=float(balance_base[0]["available"]),
+        total_quote=float(balance_quote[0]["available"]),
+    )
 
-    return BitvavoExchangeAssetClient()
+    return BitvavoExchangeAssetClient(
+        state,
+        os.environ.get("api"),
+        os.environ.get("secret_key"),
+        1
+    )
+
+@pytest.fixture
+def bitvavo_market_api() -> BitvavoMarketAPI:
+    return BitvavoMarketAPI()
