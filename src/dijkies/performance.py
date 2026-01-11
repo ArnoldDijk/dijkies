@@ -6,7 +6,7 @@ from pandas.core.series import Series
 from pandas.core.series import Series as PandasSeries
 from pydantic import BaseModel
 
-from dijkies.executors import State
+from dijkies.entities import State
 from dijkies.interfaces import Metric
 
 

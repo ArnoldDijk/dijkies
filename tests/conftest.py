@@ -6,16 +6,20 @@ import pandas as pd
 import pytest
 from pandas.core.frame import DataFrame as PandasDataFrame
 from ta.momentum import RSIIndicator
+from python_bitvavo_api.bitvavo import Bitvavo
 
 from dijkies.data_pipeline import OHLCVDataPipeline
 from dijkies.exchange_market_api import BitvavoMarketAPI
 from dijkies.executors import (
     BacktestExchangeAssetClient,
+    BitvavoExchangeAssetClient,
     ExchangeAssetClient,
     Order,
     State,
 )
 from dijkies.interfaces import DataPipeline, Strategy
+
+from dotenv import load_dotenv
 
 
 class RSIStrategy(Strategy):
@@ -128,3 +132,24 @@ def open_buy_order() -> Order:
         status="open",
         is_taker=False,
     )
+
+@pytest.fixture
+def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
+    # arrange
+
+    load_dotenv()
+
+    bitvavo = Bitvavo(
+        {
+            "APIKEY": os.environ.get("api"),
+            "APISECRET": os.environ.get("secret_key"),
+            "RESTURL": "https://api.bitvavo.com/v2",
+            "WSURL": "wss://ws.bitvavo.com/v2/",
+            "ACCESSWINDOW": 10000,
+            "DEBUGGING": False,
+        }
+    )
+
+    balance = bitvavo.balance({"symbol": "BTC"})
+
+    return BitvavoExchangeAssetClient()

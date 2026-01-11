@@ -20,18 +20,6 @@ This separation ensures that strategies remain:
 
 A strategy written once can be backtested on historical data and later deployed to a real exchange without modification.
 
-## How It Works
-
-At a high level, Dijkies operates as follows:
-
-1. Market data (candles) is fetched from an exchange or data provider
-2. A rolling window of historical data is passed to a strategy
-3. The strategy analyzes the data and generates buy/sell signals
-4. Orders are placed through a standardized execution interface
-5. Account state is updated accordingly
-6. Results are collected (during backtesting) or executed live
-
-
 ## Key Design Principles
 
 - **Strategy–Executor separation**
@@ -53,9 +41,9 @@ At a high level, Dijkies operates as follows:
 
 Dijkies is designed for:
 
-- Developers building algorithmic trading systems
+- Data Scientists building algorithmic trading systems
 - Quantitative traders who want full control over strategy logic
-- Anyone who wants to move from backtesting to production without rewriting code
+- Anyone who wants to move from backtesting to production without focussing on 
 
 ## What Dijkies Is Not
 
@@ -73,27 +61,40 @@ This quick start shows how to define a strategy, fetch market data, and run a ba
 
 ### 1. Define a Strategy
 
-A strategy is a class that inherits from `Strategy` and implements the `execute` method.
-It receives a rolling dataframe of candles and decides when to place orders.
+A strategy is a class that inherits from `Strategy` and implements the `execute` and  `get_data_pipeline` method.
+the execute method receives a pandas dataframe that should, at least, contain `open`, `high`, `low`, `close`, `volume` and `candle_time` columns.
+more can be added, and used within your trading algorithm. The engineering of these columns falls outside of dijkies scope. 
+
+This data is then used to define and execute actions. The following actions are available (see docstrings in dijkies.interfaces.ExchangeAssetClient for more info):
+
+-   `place limit buy order`
+-   `place limit sell order`
+-   `place market buy order`
+-   `place market sell order`
+-   `cancel (limit) order`
+-   `get order information`
+-   `get account balance`
+
+Below is an example implementation of an RSI strategy:
 
 ```python
-# create strategy
-
-from dijkies.executors import (
-    ExchangeAssetClient,
-    BacktestExchangeAssetClient,
-    State
+from dijkies.executors import BacktestExchangeAssetClient
+from dijkies.exchange_market_api import BitvavoMarketAPI
+from dijkies.interfaces import (
+    Strategy,
+    DataPipeline,
+    ExchangeAssetClient
 )
-from dijkies.strategy import Strategy
+from dijkies.entities import State
+from dijkies.data_pipeline import OHLCVDataPipeline
 
 from ta.momentum import RSIIndicator
 from pandas.core.frame import DataFrame as PandasDataFrame
 
-from dijkies.data_pipeline import DataPipeline, NoDataPipeline
-
 
 class RSIStrategy(Strategy):
     analysis_dataframe_size_in_minutes = 60*24*30
+    min_order_amount = 10
 
     def __init__(
         self,
@@ -116,28 +117,30 @@ class RSIStrategy(Strategy):
             and current_candle.momentum_rsi < self.lower_threshold
         )
 
-        if is_buy_signal:
-            self.executor.place_market_buy_order(
-                self.state.base,
-                self.state.quote_available,
-            )
+        if (
+            is_buy_signal and
+            self.state.quote_available > self.min_order_amount
+        ):
+            self.executor.place_market_buy_order(self.state.quote_available)
 
         is_sell_signal = (
             previous_candle.momentum_rsi < self.higher_threshold
             and current_candle.momentum_rsi > self.higher_threshold
         )
 
-        if is_sell_signal:
-            self.executor.place_market_sell_order(
-                self.state.base,
-                self.state.base_available,
-            )
+        if (
+            is_sell_signal and
+            self.state.base_available * candle_df.iloc[-1].close > self.min_order_amount
+        ):
+            self.executor.place_market_sell_order(self.state.base_available)
 
     def get_data_pipeline(self) -> DataPipeline:
-        """
-        Implement this metho
-        """
-        return NoDataPipeline()
+        return OHLCVDataPipeline(
+            BitvavoMarketAPI(),
+            self.state.base,
+            60,
+            60*24*7
+        )
 ```
 
 ### 2. fetch data for your backtest
@@ -152,43 +155,39 @@ candle_df = bitvavo_market_api.get_candles()
 ```
 
 ### 3. Set Up State and BacktestingExecutor
-Market data is provided as a pandas DataFrame containing OHLCV candles.
+final steps involve initializing a state and backtest-executor. The state keeps track of the assets that the strategy is managing.
+This is in sync with the real state of the account at the exchange and is used as information source in decision making.
+The backtest executor is a Mock for the execution of actions. This backtest executor is replaced by a real exchange executor in live trading. The backtest method returns a Pandas dataframe containing all important information about the backtest. For instance, a timeseries of the amount of assets, which buy orders are open, total amount of transactions made so far. the full list can be found in the performance module.
+
 
 ```python
-from dijkies.executors import BacktestExchangeAssetClient, State
+# do backtest
+
+fee_limit_order = 0.0015
+fee_market_order = 0.0025
+
+start_investment_base = 0
+start_investment_quote = 1000
 
 state = State(
     base="XRP",
-    total_base=0,
-    total_quote=1000,
+    total_base=start_investment_base,
+    total_quote=start_investment_quote
 )
 
 executor = BacktestExchangeAssetClient(
-    state=state,
-    fee_limit_order=0.0015,
-    fee_market_order=0.0025,
+    state,
+    fee_limit_order=fee_limit_order,
+    fee_market_order=fee_market_order
 )
-```
-
-### 4. Run the Backtest
-
-Use the Backtester to run the strategy over historical data.
-
-```python
-from dijkies.backtest import Backtester
 
 strategy = RSIStrategy(
-    executor=executor,
-    lower_threshold=35,
-    higher_threshold=65,
+    executor,
+    35,
+    65,
 )
 
-results = strategy.backtest(
-    candle_df=candle_df,
-)
-
-results.total_value_strategy.plot()
-results.total_value_hodl.plot()
+results = strategy.backtest(candle_df)
 ```
 
 ## Deployment & Live Trading
@@ -269,7 +268,7 @@ root/
 
 ```python
 from pathlib import Path
-from dijkies.bot import LocalStrategyRepository
+from dijkies.deployment import LocalStrategyRepository
 
 repo = LocalStrategyRepository(Path("./strategies"))
 
@@ -278,7 +277,7 @@ repo = LocalStrategyRepository(Path("./strategies"))
 strategy = repo.read(
     person_id="ArnoldDijk",
     exchange="bitvavo",
-    bot_id="rsi_bot",
+    bot_id="berend_botje",
     status="active"
 )
 
@@ -322,16 +321,16 @@ class CredentialsRepository(ABC):
 The local implementation retrieves credentials from environment variables:
 
 ```bash
-export alice_bitvavo_api_key="..."
-export alice_bitvavo_api_secret_key="..."
+export ArnoldDijk_bitvavo_api_key="..."
+export ArnoldDijk_bitvavo_api_secret_key="..."
 ```
 
 ```python
-import LocalCredentialsRepository
+from dijkies.deployment import LocalCredentialsRepository
 
 credentials_repository = LocalCredentialsRepository()
 bitvavo_api_key = credentials_repository.get_api_key(
-    person_id="alice",
+    person_id="ArnoldDijk",
     exchange="bitvavo"
 )
 ```
@@ -351,9 +350,9 @@ The Bot class is the runtime orchestrator responsible for:
 
 ```python
 bot.run(
-    person_id="alice",
+    person_id="ArnoldDijk",
     exchange="bitvavo",
-    bot_id="rsi-xrp",
+    bot_id="berend_botje",
     status="active",
 )
 ```
@@ -376,9 +375,9 @@ Bots can be stopped gracefully using the stop method.
 
 ```python
 bot.stop(
-    person_id="alice",
+    person_id="ArnoldDijk",
     exchange="bitvavo",
-    bot_id="rsi-xrp",
+    bot_id="berend_botje",
     status="active",
     asset_handling="quote_only",
 )
@@ -406,48 +405,19 @@ Before stopping, the bot:
 
 If anything fails, the bot is moved to paused.
 
-## Deployment Quickstart
+## Deployment locally Quickstart
 
-In this example, we will use the earlier defined rsi strategy.
+In this example, we will continue from the earlier defined rsi strategy.
+we ended at the moment we executed the backtest. Now suppose we decide to use this algorithm with real money. 
+Then we have to deploy the strategy. In this example we will deploy locally. 
 
-### Step 1: Create and Backtest a Strategy
-
-```python
-from dijkies.executors import BacktestExchangeAssetClient, State
-from dijkies.backtest import Backtester
-
-state = State(
-    base="XRP",
-    total_base=0,
-    total_quote=1000,
-)
-
-executor = BacktestExchangeAssetClient(
-    state=state,
-    fee_market_order=0.0025,
-    fee_limit_order=0.0015,
-)
-
-strategy = RSIStrategy(
-    executor=executor,
-    lower_threshold=35,
-    higher_threshold=65,
-)
-
-results = strategy.backtest(candle_df)
-```
-
-analyse the results and decide if you want to use this strategy.
-
-### Step 2: Prepare the Strategy for Deployment
-
-After backtesting, the same strategy instance can be deployed live.
+### Step 1: Prepare the Strategy for Deployment
 
 #### Create a Strategy Repository
 
 ```python
 from pathlib import Path
-from dijkies.bot import LocalStrategyRepository
+from dijkies.deployment import LocalStrategyRepository
 
 strategy_repository = LocalStrategyRepository(
     root_directory=Path("./strategies")
@@ -459,30 +429,30 @@ strategy_repository = LocalStrategyRepository(
 ```python
 strategy_repository.store(
     strategy=strategy,
-    person_id="alice",
+    person_id="ArnoldDijk",
     exchange="bitvavo",
-    bot_id="rsi-xrp",
+    bot_id="berend_botje",
     status="active",
 )
 ```
 
 This serializes the strategy and its state so it can be resumed later.
 
-### Step 3: Configure Exchange Credentials
+### Step 2: Configure Exchange Credentials
 
 Set your exchange credentials as environment variables:
 
 ```bash
-export alice_bitvavo_api_key="your_api_key"
-export alice_bitvavo_api_secret_key="your_api_secret"
+export ArnoldDijk_bitvavo_api_key="foo"
+export ArnoldDijk_bitvavo_api_secret_key="bar"
 ```
 
-### Step 4: Create the Bot Runtime
+### Step 3: Create the Bot Runtime
 
 The Bot orchestrates loading, execution, and lifecycle management.
 
 ```python
-from dijkies.bot import Bot, LocalCredentialsRepository
+from dijkies.deployment import Bot, LocalCredentialsRepository
 
 credentials_repository = LocalCredentialsRepository()
 
@@ -492,7 +462,7 @@ bot = Bot(
 )
 ```
 
-### Step 5: Run the Strategy Live
+### Step 4: Run the Strategy Live
 
 start the live trading bot
 
@@ -513,3 +483,30 @@ What Happens Under the Hood:
 5. strategy is persisted, executor and credentials not included.
 
 If an exception occurs, the bot is automatically moved to paused.
+
+the strategy should be run repeatedly every, say, 5 minutes. There are plenty of ways to accomplish this, and below is a very
+basic example:
+
+```python
+from datetime import datetime, timezone
+
+while True:
+    try:
+        bot.run(
+            person_id="alice",
+            exchange="bitvavo",
+            bot_id="rsi-xrp",
+            status="active",
+        )
+    except Exception as e:
+        print("an error occured: ", e)
+    
+    t = datetime.now(tz=timezone.utc)
+    minutes_left = 5 - t.minute%5
+    time.sleep((minutes_left - 1)*60 + (60 - t.seconds))
+    
+```
+
+However, it is much better to use orchestration tools like Apache Airflow. Many bots can be run in parallel using the fan-in/fan-out principle.
+
+

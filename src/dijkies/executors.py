@@ -35,13 +35,13 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
         self.current_candle = current_candle
 
     def place_limit_buy_order(
-        self, base: str, limit_price: float, amount_in_quote: float
+        self, limit_price: float, amount_in_quote: float
     ) -> Order:
         order = Order(
             order_id=str(uuid.uuid4()),
             exchange="bitvavo",
             time_created=int(time.time()),
-            market=base,
+            market=self.state.base,
             side="buy",
             limit_price=limit_price,
             on_hold=amount_in_quote,
@@ -54,13 +54,13 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
         return order
 
     def place_limit_sell_order(
-        self, base: str, limit_price: float, amount_in_base: float
+        self, limit_price: float, amount_in_base: float
     ) -> Order:
         order = Order(
             order_id=str(uuid.uuid4()),
             exchange="bitvavo",
             time_created=int(time.time()),
-            market=base,
+            market=self.state.base,
             side="sell",
             limit_price=limit_price,
             on_hold=amount_in_base,
@@ -72,7 +72,7 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
 
         return order
 
-    def place_market_buy_order(self, base: str, amount_in_quote: float) -> Order:
+    def place_market_buy_order(self, amount_in_quote: float) -> Order:
         fee = amount_in_quote * self.fee_market_order / (1 + self.fee_market_order)
         amount_in_base = (amount_in_quote - fee) / self.current_candle.close
 
@@ -80,7 +80,7 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
             order_id=str(uuid.uuid4()),
             exchange="bitvavo",
             time_created=int(time.time()),
-            market=base,
+            market=self.state.base,
             side="buy",
             filled=amount_in_base,
             filled_quote=amount_in_quote - fee,
@@ -93,7 +93,7 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
 
         return order
 
-    def place_market_sell_order(self, base: str, amount_in_base: float) -> Order:
+    def place_market_sell_order(self, amount_in_base: float) -> Order:
         amount_in_quote = amount_in_base * self.current_candle.close
         fee = amount_in_quote * self.fee_market_order
 
@@ -101,7 +101,7 @@ class BacktestExchangeAssetClient(ExchangeAssetClient):
             order_id=str(uuid.uuid4()),
             exchange="bitvavo",
             time_created=int(time.time()),
-            market=base,
+            market=self.state.base,
             side="sell",
             filled=amount_in_base,
             filled_quote=amount_in_quote,
@@ -229,8 +229,8 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
 
         return base_is_available and quote_is_available
 
-    def quantity_decimals(self, base: str) -> int:
-        trading_pair = base + "-EUR"
+    def quantity_decimals(self) -> int:
+        trading_pair = self.state.base + "-EUR"
         return self.bitvavo.markets({"market": trading_pair})["quantityDecimals"]
 
     @staticmethod
@@ -255,8 +255,16 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
 
         return float(corrected)
 
-    def get_balance(self, base: str) -> dict[str, float]:
-        balance = self.bitvavo.balance({"symbol": base})
+    def get_balance_base(self) -> dict[str, float]:
+        balance = self.bitvavo.balance({"symbol": self.state.base})
+        if balance:
+            balance = balance[0]
+        else:
+            balance = {"available": 0, "inOrder": 0}
+        return balance
+    
+    def get_balance_quote(self) -> dict[str, float]:
+        balance = self.bitvavo.balance({"symbol": "EUR"})
         if balance:
             balance = balance[0]
         else:
@@ -264,14 +272,14 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         return balance
 
     def place_limit_buy_order(
-        self, base: str, limit_price: float, amount_in_quote: float
+        self, limit_price: float, amount_in_quote: float
     ) -> Order:
-        trading_pair = base + "-EUR"
+        trading_pair = self.state.base + "-EUR"
         limit_price = self.__closest_valid_price(price=float(limit_price))
 
         amount_in_base = round(
             (float(amount_in_quote) - 0.01) / (limit_price * (1 + self.max_fee)),
-            self.quantity_decimals(base),
+            self.quantity_decimals(),
         )
 
         response = self.bitvavo.placeOrder(
@@ -288,27 +296,36 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
                 time.sleep(3)
-                order = self.place_limit_buy_order(base, limit_price, amount_in_quote)
+                order = self.place_limit_buy_order(limit_price, amount_in_quote)
                 return order
             elif error_code == 216:
-                balance = self.get_balance(base)
-                raise InsufficientBalanceError(balance, amount_in_base)
+                balance = self.get_balance_quote()
+                raise InsufficientBalanceError(balance, amount_in_quote)
             elif error_code == 217:
                 raise InsufficientOrderValueError()
             else:
                 raise Exception(str(response))
 
         order = order_from_bitvavo_response(response)
-        self.state.add_order(order)
+        if order.is_filled:
+            """
+            if the order is immediately filled, we have to treat the order as a market order.
+            wait a bit to make sure the fills are registered in the exchange
+            before fetching and processing the order info
+            """
+            time.sleep(3)
+            order = self.get_order_info(order)
+            self.state.process_filled_order(order)
+        else:
+            self.state.add_order(order)
         return order
 
     def place_limit_sell_order(
-        self, base: str, limit_price: float, amount_in_base: float
+        self, limit_price: float, amount_in_base: float
     ) -> Order:
-        trading_pair = base + "-EUR"
+        trading_pair = self.state.base + "-EUR"
 
-        quantity_decimals = self.quantity_decimals(base)
-
+        quantity_decimals = self.quantity_decimals()
         factor = 1 / (10**quantity_decimals)
         amount_in_base = round(
             (float(amount_in_base) // factor) * factor,
@@ -331,10 +348,10 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
                 time.sleep(3)
-                order = self.place_limit_sell_order(base, limit_price, amount_in_base)
+                order = self.place_limit_sell_order(limit_price, amount_in_base)
                 return order
             elif error_code == 216:
-                balance = self.get_balance(base)
+                balance = self.get_balance_base()
                 raise InsufficientBalanceError(balance, amount_in_base)
             elif error_code == 217:
                 raise InsufficientOrderValueError()
@@ -342,11 +359,21 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 raise Exception(str(response))
 
         order = order_from_bitvavo_response(response)
-        self.state.add_order(order)
+        if order.is_filled:
+            """
+            if the order is immediately filled, we have to treat the order as a market order.
+            wait a bit to make sure the fills are registered in the exchange
+            before fetching and processing the order info
+            """
+            time.sleep(3)
+            order = self.get_order_info(order)
+            self.state.process_filled_order(order)
+        else:
+            self.state.add_order(order)
         return order
 
-    def place_market_buy_order(self, base: str, amount_in_quote: float) -> Order:
-        trading_pair = base + "-EUR"
+    def place_market_buy_order(self, amount_in_quote: float) -> Order:
+        trading_pair = self.state.base + "-EUR"
 
         amount_in_quote = str(round(float(amount_in_quote), 2))
 
@@ -360,10 +387,10 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
                 time.sleep(3)
-                order = self.place_market_buy_order(base, amount_in_quote)
+                order = self.place_market_buy_order(amount_in_quote)
                 return order
             elif error_code == 216:
-                balance = self.get_balance("EUR")
+                balance = self.get_balance_quote()
                 raise InsufficientBalanceError(balance, amount_in_quote)
             elif error_code == 217:
                 raise InsufficientOrderValueError()
@@ -371,14 +398,15 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 raise Exception(str(response))
 
         order = order_from_bitvavo_response(response)
+        # wait a bit to make sure the fills are registered in the exchange
         time.sleep(3)
         order = self.get_order_info(order)
         self.state.process_filled_order(order)
         return order
 
-    def place_market_sell_order(self, base: str, amount_in_base: float) -> Order:
-        trading_pair = base + "-EUR"
-        quantity_decimals = self.quantity_decimals(base)
+    def place_market_sell_order(self, amount_in_base: float) -> Order:
+        trading_pair = self.state.base + "-EUR"
+        quantity_decimals = self.quantity_decimals()
 
         factor = 1 / (10**quantity_decimals)
         amount_in_base = round(
@@ -395,10 +423,10 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             error_code = response["errorCode"]
             if error_code in [107, 108, 109]:
                 time.sleep(3)
-                order = self.place_market_sell_order(base, amount_in_base)
+                order = self.place_market_sell_order(amount_in_base)
                 return order
             elif error_code == 216:
-                balance = self.get_balance(base)
+                balance = self.get_balance_base()
                 raise InsufficientBalanceError(balance, amount_in_base)
             elif error_code == 217:
                 raise InsufficientOrderValueError()
@@ -406,6 +434,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 raise Exception(str(response))
 
         order = order_from_bitvavo_response(response)
+        # wait a bit to make sure the fills are registered in the exchange
         time.sleep(3)
         order = self.get_order_info(order)
         self.state.process_filled_order(order)
