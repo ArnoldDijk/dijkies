@@ -411,9 +411,8 @@ In this example, we will continue from the earlier defined rsi strategy.
 we ended at the moment we executed the backtest. Now suppose we decide to use this algorithm with real money.
 Then we have to deploy the strategy. In this example we will deploy locally.
 
-### Step 1: Prepare the Strategy for Deployment
+### Step 1: Prepare the Strategy for Deployment -> Create a Strategy Repository and store your strategy
 
-#### Create a Strategy Repository
 
 ```python
 from pathlib import Path
@@ -422,11 +421,15 @@ from dijkies.deployment import LocalStrategyRepository
 strategy_repository = LocalStrategyRepository(
     root_directory=Path("./strategies")
 )
-```
 
-#### Store the strategy
+# adjust state to what you want to invest.
 
-```python
+strategy.state = State(
+    base="BTC",
+    total_base=0,
+    total_quote=13  # let's invest 13 euros initially
+)
+
 strategy_repository.store(
     strategy=strategy,
     person_id="ArnoldDijk",
@@ -484,26 +487,29 @@ What Happens Under the Hood:
 
 If an exception occurs, the bot is automatically moved to paused.
 
-the strategy should be run repeatedly every, say, 5 minutes. There are plenty of ways to accomplish this, and below is a very
+the strategy should be run repeatedly every, say, 60 minutes. There are plenty of ways to accomplish this, and below is a very
 basic example:
 
 ```python
+import time
 from datetime import datetime, timezone
 
 while True:
     try:
+        print("running bot cycle at ", datetime.now(tz=timezone.utc))
         bot.run(
             person_id="ArnoldDijk",
             exchange="bitvavo",
             bot_id="berend_botje",
             status="active",
         )
+        print("bot cycle finished")
     except Exception as e:
         print("an error occured: ", e)
 
     t = datetime.now(tz=timezone.utc)
-    minutes_left = 5 - t.minute%5
-    time.sleep((minutes_left - 1)*60 + (60 - t.seconds))
+    minutes_left = 60 - t.minute
+    time.sleep((minutes_left - 1) * 60 + (60 - t.second))
 
 ```
 
