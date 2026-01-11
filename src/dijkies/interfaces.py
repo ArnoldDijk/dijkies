@@ -194,7 +194,7 @@ class Strategy(ABC):
                 (data.time >= start_analysis_df) & (data.time <= current_time)
             ]
 
-            return analysis_df
+            return analysis_df.copy()
 
         for _, candle in simulation_df.iterrows():
             analysis_df = get_analysis_df(data, candle.time, lookback_in_min)

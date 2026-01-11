@@ -150,13 +150,9 @@ class Bot:
             for open_order in strategy.state.open_orders:
                 _ = strategy.executor.cancel_order(open_order)
             if asset_handling == "base_only":
-                _ = strategy.executor.place_market_buy_order(
-                    strategy.state.base, strategy.state.quote_available
-                )
+                _ = strategy.executor.place_market_buy_order(strategy.state.quote_available)
             elif asset_handling == "quote_only":
-                _ = strategy.executor.place_market_sell_order(
-                    strategy.state.base, strategy.state.base_available
-                )
+                _ = strategy.executor.place_market_sell_order(strategy.state.base_available)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
