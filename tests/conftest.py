@@ -139,8 +139,8 @@ def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
 
     bitvavo = Bitvavo(
         {
-            "APIKEY": os.environ.get("api"),
-            "APISECRET": os.environ.get("secret_key"),
+            "APIKEY": os.environ.get("ArnoldDijk_bitvavo_api_key"),
+            "APISECRET": os.environ.get("ArnoldDijk_bitvavo_api_secret_key"),
             "RESTURL": "https://api.bitvavo.com/v2",
             "WSURL": "wss://ws.bitvavo.com/v2/",
             "ACCESSWINDOW": 10000,

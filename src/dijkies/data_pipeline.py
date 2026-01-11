@@ -35,4 +35,6 @@ class OHLCVDataPipeline(DataPipeline):
     def run(self) -> PandasDataFrame:
         return self.exchange_market_api.get_candles(
             self.base, self.candle_interval_in_minutes, self.lookback_in_minutes
-        )
+        ).iloc[
+            :-1
+        ]  # Exclude the current forming candle
