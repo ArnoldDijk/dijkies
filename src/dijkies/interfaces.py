@@ -16,7 +16,6 @@ from dijkies.exceptions import (
     MissingOHLCVColumnsError,
     TimeColumnNotDefinedError,
 )
-from dijkies.performance import PerformanceInformationRow
 
 logger = logging.getLogger(__name__)
 
@@ -63,22 +62,22 @@ class ExchangeAssetClient(ABC):
 
     @abstractmethod
     def place_limit_buy_order(
-        self, base: str, limit_price: float, amount_in_quote: float
+        self, limit_price: float, amount_in_quote: float
     ) -> Order:
         pass
 
     @abstractmethod
     def place_limit_sell_order(
-        self, base: str, limit_price: float, amount_in_base: float
+        self, limit_price: float, amount_in_base: float
     ) -> Order:
         pass
 
     @abstractmethod
-    def place_market_buy_order(self, base: str, amount_in_quote: float) -> Order:
+    def place_market_buy_order(self, amount_in_quote: float) -> Order:
         pass
 
     @abstractmethod
-    def place_market_sell_order(self, base: str, amount_in_base: float) -> Order:
+    def place_market_sell_order(self, amount_in_base: float) -> Order:
         pass
 
     @abstractmethod
@@ -158,6 +157,7 @@ class Strategy(ABC):
         """
 
         from dijkies.executors import BacktestExchangeAssetClient
+        from dijkies.performance import PerformanceInformationRow
 
         # validate args
 
@@ -194,7 +194,7 @@ class Strategy(ABC):
                 (data.time >= start_analysis_df) & (data.time <= current_time)
             ]
 
-            return analysis_df
+            return analysis_df.copy()
 
         for _, candle in simulation_df.iterrows():
             analysis_df = get_analysis_df(data, candle.time, lookback_in_min)
@@ -251,15 +251,5 @@ class CredentialsRepository(ABC):
         pass
 
     @abstractmethod
-    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
-        pass
-
-    @abstractmethod
     def get_api_secret_key(self, person_id: str, exchange: str) -> str:
-        pass
-
-    @abstractmethod
-    def store_api_secret_key(
-        self, person_id: str, exchange: str, api_secret_key: str
-    ) -> None:
         pass

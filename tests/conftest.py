@@ -4,13 +4,16 @@ import uuid
 
 import pandas as pd
 import pytest
+from dotenv import load_dotenv
 from pandas.core.frame import DataFrame as PandasDataFrame
+from python_bitvavo_api.bitvavo import Bitvavo
 from ta.momentum import RSIIndicator
 
 from dijkies.data_pipeline import OHLCVDataPipeline
 from dijkies.exchange_market_api import BitvavoMarketAPI
 from dijkies.executors import (
     BacktestExchangeAssetClient,
+    BitvavoExchangeAssetClient,
     ExchangeAssetClient,
     Order,
     State,
@@ -128,3 +131,43 @@ def open_buy_order() -> Order:
         status="open",
         is_taker=False,
     )
+
+
+@pytest.fixture
+def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
+    load_dotenv()
+
+    bitvavo = Bitvavo(
+        {
+            "APIKEY": os.environ.get("ArnoldDijk_bitvavo_api_key"),
+            "APISECRET": os.environ.get("ArnoldDijk_bitvavo_api_secret_key"),
+            "RESTURL": "https://api.bitvavo.com/v2",
+            "WSURL": "wss://ws.bitvavo.com/v2/",
+            "ACCESSWINDOW": 10000,
+            "DEBUGGING": False,
+        }
+    )
+
+    balance_base = bitvavo.balance({"symbol": "BTC"})
+    balance_quote = bitvavo.balance({"symbol": "EUR"})
+
+    base_available = balance_base[0]["available"] if balance_base else 0
+    quote_available = balance_quote[0]["available"] if balance_quote else 0
+
+    state = State(
+        base="BTC",
+        total_base=float(base_available),
+        total_quote=float(quote_available),
+    )
+
+    return BitvavoExchangeAssetClient(
+        state,
+        os.environ.get("ArnoldDijk_bitvavo_api_key"),
+        os.environ.get("ArnoldDijk_bitvavo_api_secret_key"),
+        1,
+    )
+
+
+@pytest.fixture
+def bitvavo_market_api() -> BitvavoMarketAPI:
+    return BitvavoMarketAPI()

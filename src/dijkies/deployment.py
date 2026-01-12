@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from dijkies.constants import ASSET_HANDLING, BOT_STATUS, SUPPORTED_EXCHANGES
+from dijkies.exceptions import AssetNotAvailableError
 from dijkies.interfaces import (
     CredentialsRepository,
     Strategy,
@@ -18,14 +19,8 @@ class LocalCredentialsRepository(CredentialsRepository):
     def get_api_key(self, person_id: str, exchange: str) -> str:
         return os.environ.get(f"{person_id}_{exchange}_api_key")
 
-    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
-        pass
-
     def get_api_secret_key(self, person_id: str, exchange: str) -> str:
         return os.environ.get(f"{person_id}_{exchange}_api_secret_key")
-
-    def store_api_secret_key(self, id: str, api_secret_key: str) -> None:
-        pass
 
 
 class LocalStrategyRepository(StrategyRepository):
@@ -120,6 +115,8 @@ class Bot:
         data = data_pipeline.run()
 
         try:
+            if not strategy.executor.assets_in_state_are_available():
+                raise AssetNotAvailableError(strategy.state.base)
             strategy.run(data)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
@@ -148,11 +145,11 @@ class Bot:
                 _ = strategy.executor.cancel_order(open_order)
             if asset_handling == "base_only":
                 _ = strategy.executor.place_market_buy_order(
-                    strategy.state.base, strategy.state.quote_available
+                    strategy.state.quote_available
                 )
             elif asset_handling == "quote_only":
                 _ = strategy.executor.place_market_sell_order(
-                    strategy.state.base, strategy.state.base_available
+                    strategy.state.base_available
                 )
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status

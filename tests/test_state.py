@@ -13,7 +13,6 @@ def test_place_limit_buy_order_adds_to_state():
 
     # Act
     order = client.place_limit_buy_order(
-        base="BTC",
         limit_price=19000,
         amount_in_quote=500,
     )
@@ -46,9 +45,7 @@ def test_cancel_limit_buy_order_moves_to_cancelled():
     )
 
     # Act: place a limit buy order
-    order = client.place_limit_buy_order(
-        base="BTC", limit_price=19000, amount_in_quote=500
-    )
+    order = client.place_limit_buy_order(limit_price=19000, amount_in_quote=500)
 
     # Assert: order is in open buy orders
     assert order in state.buy_orders
@@ -82,9 +79,9 @@ def test_multiple_limit_orders_create_fill_cancel():
     )
 
     # Place 3 buy limit orders
-    order1 = client.place_limit_buy_order("BTC", limit_price=19500, amount_in_quote=200)
-    order2 = client.place_limit_buy_order("BTC", limit_price=19000, amount_in_quote=300)
-    order3 = client.place_limit_buy_order("BTC", limit_price=18000, amount_in_quote=400)
+    order1 = client.place_limit_buy_order(limit_price=19500, amount_in_quote=200)
+    order2 = client.place_limit_buy_order(limit_price=19000, amount_in_quote=300)
+    order3 = client.place_limit_buy_order(limit_price=18000, amount_in_quote=400)
 
     # Precondition: all are open
     assert all(order.status == "open" for order in [order1, order2, order3])
