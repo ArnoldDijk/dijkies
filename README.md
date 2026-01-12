@@ -1,3 +1,5 @@
+![Alt text](image.png)
+
 # Dijkies
 
 **Dijkies** is a Python framework for creating, testing, and deploying algorithmic trading strategies in a clean, modular, and exchange-agnostic way.
