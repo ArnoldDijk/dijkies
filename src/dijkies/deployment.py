@@ -19,14 +19,8 @@ class LocalCredentialsRepository(CredentialsRepository):
     def get_api_key(self, person_id: str, exchange: str) -> str:
         return os.environ.get(f"{person_id}_{exchange}_api_key")
 
-    def store_api_key(self, person_id: str, exchange: str, api_key: str) -> None:
-        pass
-
     def get_api_secret_key(self, person_id: str, exchange: str) -> str:
         return os.environ.get(f"{person_id}_{exchange}_api_secret_key")
-
-    def store_api_secret_key(self, id: str, api_secret_key: str) -> None:
-        pass
 
 
 class LocalStrategyRepository(StrategyRepository):

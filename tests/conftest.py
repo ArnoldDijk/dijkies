@@ -150,14 +150,21 @@ def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
 
     balance_base = bitvavo.balance({"symbol": "BTC"})
     balance_quote = bitvavo.balance({"symbol": "EUR"})
+
+    base_available = balance_base[0]["available"] if balance_base else 0
+    quote_available = balance_quote[0]["available"] if balance_quote else 0
+
     state = State(
         base="BTC",
-        total_base=float(balance_base[0]["available"]),
-        total_quote=float(balance_quote[0]["available"]),
+        total_base=float(base_available),
+        total_quote=float(quote_available),
     )
 
     return BitvavoExchangeAssetClient(
-        state, os.environ.get("api"), os.environ.get("secret_key"), 1
+        state,
+        os.environ.get("ArnoldDijk_bitvavo_api_key"),
+        os.environ.get("ArnoldDijk_bitvavo_api_secret_key"),
+        1
     )
 
 
