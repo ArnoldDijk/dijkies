@@ -164,7 +164,7 @@ def bitvavo_exchange_asset_client() -> ExchangeAssetClient:
         state,
         os.environ.get("ArnoldDijk_bitvavo_api_key"),
         os.environ.get("ArnoldDijk_bitvavo_api_secret_key"),
-        1
+        1,
     )
 
 
