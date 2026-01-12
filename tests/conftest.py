@@ -47,7 +47,6 @@ class RSIStrategy(Strategy):
 
         if is_buy_signal:
             self.executor.place_market_buy_order(
-                self.executor.state.base,
                 self.executor.state.quote_available,
             )
 
@@ -58,7 +57,6 @@ class RSIStrategy(Strategy):
 
         if is_sell_signal:
             self.executor.place_market_sell_order(
-                self.executor.state.base,
                 self.executor.state.base_available,
             )
 
