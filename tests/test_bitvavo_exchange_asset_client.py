@@ -169,3 +169,10 @@ def test_bitvavo_exchange_asset_client_place_limit_sell_order_below_price(
 
     assert order.status == "filled"
     assert state_is_in_sync_with_bitvavo(bitvavo_exchange_asset_client)
+
+
+@pytest.mark.exchange
+def test_bitvavo_exchange_asset_client_state_is_available(
+    bitvavo_exchange_asset_client: ExchangeAssetClient,
+) -> None:
+    assert bitvavo_exchange_asset_client.assets_in_state_are_available()
