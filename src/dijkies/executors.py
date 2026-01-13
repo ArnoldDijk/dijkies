@@ -230,20 +230,24 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         in_order_quote_is_available = self.state.quote_on_hold <= in_order_quote
 
         logger.info(
-            f"base available exchange: {available_base}",
-            f"base available state: {self.state.base_available}",
+            "base available exchange: %s | base available state: %s",
+            available_base,
+            self.state.base_available,
         )
         logger.info(
-            f"quote available exchange: {available_quote}",
-            f"quote available state: {self.state.quote_available}",
+            "quote available exchange: %s | quote available state: %s",
+            available_quote,
+            self.state.quote_available,
         )
         logger.info(
-            f"base in order exchange: {in_order_base}",
-            f"base on hold state: {self.state.base_on_hold}",
+            "base in order exchange: %s | base on hold state: %s",
+            in_order_base,
+            self.state.base_on_hold,
         )
         logger.info(
-            f"quote in order exchange: {in_order_quote}",
-            f"quote on hold state: {self.state.quote_on_hold}",
+            "quote in order exchange: %s | quote on hold state: %s",
+            in_order_quote,
+            self.state.quote_on_hold,
         )
 
         return (
