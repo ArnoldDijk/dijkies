@@ -10,6 +10,7 @@ from pandas.core.series import Series as PandasSeries
 from dijkies.constants import BOT_STATUS, SUPPORTED_EXCHANGES
 from dijkies.entities import Order, State
 from dijkies.exceptions import (
+    AssetNotAvailableError,
     DataTimeWindowShorterThanSuggestedAnalysisWindowError,
     InvalidExchangeAssetClientError,
     InvalidTypeForTimeColumnError,
@@ -109,6 +110,8 @@ class Strategy(ABC):
 
     def run(self, data: PandasDataFrame) -> None:
         self.executor.update_state()
+        if not self.executor.assets_in_state_are_available():
+            raise AssetNotAvailableError(self.state.base)
         self.execute(data)
 
     @classmethod

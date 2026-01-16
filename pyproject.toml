@@ -1,6 +1,6 @@
 [project]
 name = "dijkies"
-version = "0.1.4"
+version = "0.1.6"
 description = "A python framework that can be used to create, test and deploy trading algorithms."
 packages = [{ include = "dijkies", from = "src" }]
 readme = "README.md"

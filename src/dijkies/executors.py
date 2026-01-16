@@ -224,10 +224,12 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
         in_order_base = float(base_response[0]["inOrder"]) if base_response else 0
         in_order_quote = float(quote_response[0]["inOrder"]) if quote_response else 0
 
-        base_is_available = self.state.base_available <= available_base
-        quote_is_available = self.state.quote_available <= available_quote
-        in_order_base_is_available = self.state.base_on_hold <= in_order_base
-        in_order_quote_is_available = self.state.quote_on_hold <= in_order_quote
+        base_is_available = self.state.base_available <= available_base * 1.000001
+        quote_is_available = self.state.quote_available <= available_quote * 1.000001
+        in_order_base_is_available = self.state.base_on_hold <= in_order_base * 1.000001
+        in_order_quote_is_available = (
+            self.state.quote_on_hold <= in_order_quote * 1.000001
+        )
 
         logger.info(
             "base available exchange: %s | base available state: %s",
