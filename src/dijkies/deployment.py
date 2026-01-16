@@ -5,7 +5,6 @@ import shutil
 from pathlib import Path
 
 from dijkies.constants import ASSET_HANDLING, BOT_STATUS, SUPPORTED_EXCHANGES
-from dijkies.exceptions import AssetNotAvailableError
 from dijkies.interfaces import (
     CredentialsRepository,
     Strategy,
@@ -115,8 +114,6 @@ class Bot:
         data = data_pipeline.run()
 
         try:
-            if not strategy.executor.assets_in_state_are_available():
-                raise AssetNotAvailableError(strategy.state.base)
             strategy.run(data)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
