@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -147,3 +147,15 @@ class State(BaseModel):
 
     def fraction_value_in_base(self, price: float) -> float:
         return 1 - self.fraction_value_in_quote(price)
+
+
+class Action(BaseModel):
+    name: Literal[
+        "place_limit_buy_order",
+        "place_limit_sell_order",
+        "place_market_buy_order",
+        "place_market_sell_order",
+        "cancel_order",
+    ]
+    arguments: dict[str, Any]
+    completed: bool = False

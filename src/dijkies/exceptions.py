@@ -1,3 +1,8 @@
+class CrucialException(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 class TimeColumnNotDefinedError(Exception):
     def __init__(self):
         super().__init__("the provided data should have a 'time' column")
@@ -63,7 +68,7 @@ class MethodNotDefinedError(Exception):
         super().__init__("method not implemented...")
 
 
-class InsufficientBalanceError(Exception):
+class InsufficientBalanceError(CrucialException):
     def __init__(
         self,
         balance: dict[str, float],
@@ -77,7 +82,7 @@ class InsufficientBalanceError(Exception):
         )
 
 
-class InsufficientOrderValueError(Exception):
+class InsufficientOrderValueError(CrucialException):
     def __init__(self):
         super().__init__(
             """
@@ -86,7 +91,7 @@ class InsufficientOrderValueError(Exception):
         )
 
 
-class AssetNotAvailableError(Exception):
+class AssetNotAvailableError(CrucialException):
     def __init__(self, asset: str):
         super().__init__(
             f"""

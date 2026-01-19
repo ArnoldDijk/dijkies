@@ -8,7 +8,7 @@ from pandas.core.frame import DataFrame as PandasDataFrame
 from pandas.core.series import Series as PandasSeries
 
 from dijkies.constants import BOT_STATUS, SUPPORTED_EXCHANGES
-from dijkies.entities import Order, State
+from dijkies.entities import Action, Order, State
 from dijkies.exceptions import (
     AssetNotAvailableError,
     DataTimeWindowShorterThanSuggestedAnalysisWindowError,
@@ -103,16 +103,27 @@ class Strategy(ABC):
     ) -> None:
         self.executor = executor
         self.state = self.executor.state
+        self.actions: list[Action] = []
 
     @abstractmethod
-    def execute(self, data: PandasDataFrame) -> None:
+    def make_plan(self, data: PandasDataFrame) -> None:
         pass
+
+    def execute(self) -> None:
+        for action_number, action in enumerate(self.actions):
+            if not action.completed:
+                logger.info(f"start executing step {action_number}")
+                method = getattr(self.executor, action.name)
+                method(**action.arguments)
+                action.completed = True
+                logger.info(f"execution of step {action_number} completed")
 
     def run(self, data: PandasDataFrame) -> None:
         self.executor.update_state()
         if not self.executor.assets_in_state_are_available():
             raise AssetNotAvailableError(self.state.base)
-        self.execute(data)
+        self.make_plan(data)
+        self.execute()
 
     @classmethod
     def _get_strategy_params(cls) -> list[str]:
@@ -139,7 +150,6 @@ class Strategy(ABC):
     def __getstate__(self):
         state = self.__dict__.copy()
         state["executor"] = None
-        state["data_pipeline"] = None
         return state
 
     @property

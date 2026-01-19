@@ -2,9 +2,13 @@ import logging
 import os
 import pickle
 import shutil
+import time
 from pathlib import Path
+from typing import Any
 
 from dijkies.constants import ASSET_HANDLING, BOT_STATUS, SUPPORTED_EXCHANGES
+from dijkies.entities import Action
+from dijkies.exceptions import CrucialException
 from dijkies.interfaces import (
     CredentialsRepository,
     Strategy,
@@ -86,6 +90,60 @@ class Bot:
         self.strategy_repository = strategy_repository
         self.credential_repository = credential_repository
 
+    def execute_manual_action(
+        self,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        status: BOT_STATUS,
+        action: Action,
+    ) -> None:
+        strategy = self.load_strategy(person_id, exchange, bot_id, status)
+        method = getattr(strategy.executor, action.name)
+        method(**action.arguments)
+        action.completed = True
+        strategy.actions.append(action)
+
+    def get_strategy_info(
+        self,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        status: BOT_STATUS,
+    ) -> dict[str, Any]:
+        strategy = self.strategy_repository.read(person_id, exchange, bot_id, status)
+
+        state = strategy.state
+
+        return {
+            "base_total": state.total_base,
+            "base_available": state.base_available,
+            "base_on_hold": state.base_on_hold,
+            "quote_total": state.total_quote,
+            "quote_available": state.quote_available,
+            "quote_on_hold": state.quote_on_hold,
+            "number_of_open_buy_orders": len(
+                [order.model_dump() for order in state.buy_orders]
+            ),
+            "number_of_open_sell_orders": len(
+                [order.model_dump() for order in state.sell_orders]
+            ),
+            "open_buy_orders": [order.model_dump() for order in state.buy_orders],
+            "open_sell_orders": [order.model_dump() for order in state.sell_orders],
+        }
+
+    def change_status(
+        self,
+        person_id: str,
+        exchange: SUPPORTED_EXCHANGES,
+        bot_id: str,
+        from_status: BOT_STATUS,
+        to_status: BOT_STATUS,
+    ) -> None:
+        self.strategy_repository.change_status(
+            person_id, exchange, bot_id, from_status, to_status
+        )
+
     def load_strategy(
         self,
         person_id: str,
@@ -110,20 +168,30 @@ class Bot:
     ) -> None:
 
         strategy = self.load_strategy(person_id, exchange, bot_id, status)
+        logger.info(
+            f"{person_id} -- {exchange} -- {strategy.state.base} -- {bot_id} -- {status}"
+        )
         data_pipeline = strategy.get_data_pipeline()
         data = data_pipeline.run()
 
         try:
+            strategy.execute()  # finish actions from previous run if exceptions occured
+            time.sleep(3)
             strategy.run(data)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
-        except Exception as e:
+        except CrucialException as e:
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
             self.strategy_repository.change_status(
                 person_id, exchange, bot_id, status, "paused"
+            )
+            raise Exception(e)
+        except Exception as e:
+            self.strategy_repository.store(
+                strategy, person_id, exchange, bot_id, status
             )
             raise Exception(e)
 

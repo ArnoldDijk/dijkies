@@ -10,6 +10,7 @@ from python_bitvavo_api.bitvavo import Bitvavo
 from ta.momentum import RSIIndicator
 
 from dijkies.data_pipeline import OHLCVDataPipeline
+from dijkies.entities import Action
 from dijkies.exchange_market_api import BitvavoMarketAPI
 from dijkies.executors import (
     BacktestExchangeAssetClient,
@@ -34,7 +35,7 @@ class RSIStrategy(Strategy):
         self.higher_threshold = higher_threshold
         super().__init__(executor)
 
-    def execute(self, candle_df: PandasDataFrame) -> None:
+    def make_plan(self, candle_df: PandasDataFrame) -> None:
         candle_df["momentum_rsi"] = RSIIndicator(candle_df.close).rsi()
 
         previous_candle = candle_df.iloc[-2]
@@ -46,8 +47,11 @@ class RSIStrategy(Strategy):
         )
 
         if is_buy_signal:
-            self.executor.place_market_buy_order(
-                self.executor.state.quote_available,
+            self.actions.append(
+                Action(
+                    name="place_market_buy_order",
+                    arguments={"amount_in_quote": self.state.quote_available},
+                )
             )
 
         is_sell_signal = (
@@ -56,8 +60,11 @@ class RSIStrategy(Strategy):
         )
 
         if is_sell_signal:
-            self.executor.place_market_sell_order(
-                self.executor.state.base_available,
+            self.actions.append(
+                Action(
+                    name="place_market_sell_order",
+                    arguments={"amount_in_base": self.state.base_available},
+                )
             )
 
     def get_data_pipeline(self) -> DataPipeline:
