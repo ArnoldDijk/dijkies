@@ -1,15 +1,19 @@
 from pathlib import Path
 
 import pytest
-from pandas.core.frame import DataFrame as PandasDataFrame
 
 from dijkies.deployment import Bot, LocalCredentialsRepository, LocalStrategyRepository
+from dijkies.exceptions import CrucialException
 from dijkies.executors import Order, State
 from dijkies.interfaces import Strategy
 
 
-def fail_execute(data: PandasDataFrame) -> None:
+def fail_execute() -> None:
     raise Exception("BOOM")
+
+
+def fail_crucial_execute() -> None:
+    raise CrucialException("BOOM")
 
 
 def test_local_strategy_store_and_read(rsi_strategy: Strategy, tmp_path: Path) -> None:
@@ -96,6 +100,35 @@ def test_bot_run_method_failure(rsi_strategy: Strategy, tmp_path: Path) -> None:
     status = "active"
 
     rsi_strategy.execute = fail_execute
+
+    src_file = tmp_path / person_id / exchange / status / f"{bot_id}.pkl"
+    replaced_file = tmp_path / person_id / exchange / "paused" / f"{bot_id}.pkl"
+
+    strategy_repository = LocalStrategyRepository(tmp_path)
+    strategy_repository.store(rsi_strategy, person_id, exchange, bot_id, status)
+
+    credential_repository = LocalCredentialsRepository()
+    bot = Bot(strategy_repository, credential_repository)
+
+    # act
+    with pytest.raises(Exception):
+        bot.run(person_id, exchange, bot_id, status)
+
+    # assert
+
+    assert not replaced_file.exists()
+    assert src_file.exists()
+
+
+def test_bot_run_method_crucial_failure(rsi_strategy: Strategy, tmp_path: Path) -> None:
+    # arrange
+
+    person_id = "AD"
+    exchange = "backtest"
+    bot_id = "ddd"
+    status = "active"
+
+    rsi_strategy.execute = fail_crucial_execute
 
     src_file = tmp_path / person_id / exchange / status / f"{bot_id}.pkl"
     replaced_file = tmp_path / person_id / exchange / "paused" / f"{bot_id}.pkl"
