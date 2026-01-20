@@ -13,6 +13,7 @@ from dijkies.exceptions import (
     GetOrderInfoError,
     InsufficientBalanceError,
     InsufficientOrderValueError,
+    InvalidOrderRequest,
 )
 from dijkies.interfaces import CredentialsRepository, ExchangeAssetClient
 
@@ -320,7 +321,7 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
             limitPrice: {limit_price}
             amount: {amount_in_base}
             operatorId: {self.operator_id}
-"""
+            """
         )
         response = self.bitvavo.placeOrder(
             market=trading_pair,
@@ -339,6 +340,8 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 time.sleep(3)
                 order = self.place_limit_buy_order(limit_price, amount_in_quote)
                 return order
+            elif error_code in [205, 210, 211, 214, 215]:
+                raise InvalidOrderRequest(self.state.base)
             elif error_code == 216:
                 balance = self.get_balance_quote()
                 raise InsufficientBalanceError(balance, amount_in_quote)
@@ -400,6 +403,8 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 time.sleep(3)
                 order = self.place_limit_sell_order(limit_price, amount_in_base)
                 return order
+            elif error_code in [205, 210, 211, 214, 215]:
+                raise InvalidOrderRequest(self.state.base)
             elif error_code == 216:
                 balance = self.get_balance_base()
                 raise InsufficientBalanceError(balance, amount_in_base)
@@ -447,6 +452,8 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 time.sleep(3)
                 order = self.place_market_buy_order(amount_in_quote)
                 return order
+            elif error_code in [205, 210, 211, 214, 215]:
+                raise InvalidOrderRequest(self.state.base)
             elif error_code == 216:
                 balance = self.get_balance_quote()
                 raise InsufficientBalanceError(balance, amount_in_quote)
@@ -492,6 +499,8 @@ class BitvavoExchangeAssetClient(ExchangeAssetClient):
                 time.sleep(3)
                 order = self.place_market_sell_order(amount_in_base)
                 return order
+            elif error_code in [205, 210, 211, 214, 215]:
+                raise InvalidOrderRequest(self.state.base)
             elif error_code == 216:
                 balance = self.get_balance_base()
                 raise InsufficientBalanceError(balance, amount_in_base)

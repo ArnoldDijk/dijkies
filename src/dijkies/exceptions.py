@@ -98,3 +98,12 @@ class AssetNotAvailableError(CrucialException):
             the asset {asset} in the strategy state is not available in the exchange.
             """
         )
+
+
+class InvalidOrderRequest(CrucialException):
+    def __init__(self, asset: str):
+        super().__init__(
+            f"""
+            Invalid order request for {asset}
+            """
+        )
