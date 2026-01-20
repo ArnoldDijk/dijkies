@@ -11,6 +11,7 @@ from dijkies.constants import BOT_STATUS, SUPPORTED_EXCHANGES
 from dijkies.entities import Action, Order, State
 from dijkies.exceptions import (
     AssetNotAvailableError,
+    CrucialException,
     DataTimeWindowShorterThanSuggestedAnalysisWindowError,
     InvalidExchangeAssetClientError,
     InvalidTypeForTimeColumnError,
@@ -95,15 +96,52 @@ class ExchangeAssetClient(ABC):
             if order.is_not_equal(newest_info_order):
                 self.state.process_filled_order(newest_info_order)
 
+    def place_limit_buy_order_by_fraction(
+        self, limit_price: float, fraction_from_quote_available: float
+    ) -> Order:
+        if fraction_from_quote_available > 1 or fraction_from_quote_available < 0:
+            raise Exception("fraction should be between 0 and 1")
+        amount_in_quote = self.state.quote_available * fraction_from_quote_available
+        self.place_limit_buy_order(limit_price, amount_in_quote)
+
+    def place_limit_sell_order_by_fraction(
+        self, limit_price: float, fraction_from_base_available: float
+    ) -> Order:
+        if fraction_from_base_available > 1 or fraction_from_base_available < 0:
+            raise Exception("fraction should be between 0 and 1")
+        amount_in_base = self.state.base_available * fraction_from_base_available
+        self.place_limit_sell_order(limit_price, amount_in_base)
+
+    def place_market_buy_order_by_fraction(
+        self, fraction_from_quote_available: float
+    ) -> Order:
+        if fraction_from_quote_available > 1 or fraction_from_quote_available < 0:
+            raise Exception("fraction should be between 0 and 1")
+        amount_in_quote = self.state.quote_available * fraction_from_quote_available
+        self.place_market_buy_order(amount_in_quote)
+
+    def place_market_sell_order_by_fraction(
+        self, fraction_from_base_available: float
+    ) -> Order:
+        if fraction_from_base_available > 1 or fraction_from_base_available < 0:
+            raise Exception("fraction should be between 0 and 1")
+        amount_in_base = self.state.base_available * fraction_from_base_available
+        self.place_market_sell_order(amount_in_base)
+
 
 class Strategy(ABC):
     def __init__(
         self,
         executor: ExchangeAssetClient,
+        retry_remaining_actions_next_run: bool = False,
+        max_consecutive_failures: int = 3,
     ) -> None:
         self.executor = executor
         self.state = self.executor.state
         self.actions: list[Action] = []
+        self.retry_remaining_actions_next_run = retry_remaining_actions_next_run
+        self.consecutive_failures = 0
+        self.max_consecutive_failures = max_consecutive_failures
 
     @abstractmethod
     def make_plan(self, data: PandasDataFrame) -> None:
@@ -111,12 +149,28 @@ class Strategy(ABC):
 
     def execute(self) -> None:
         for action_number, action in enumerate(self.actions):
-            if not action.completed:
-                logger.info(f"start executing step {action_number}")
-                method = getattr(self.executor, action.name)
-                method(**action.arguments)
-                action.completed = True
-                logger.info(f"execution of step {action_number} completed")
+            if action.status == "open":
+                try:
+                    logger.info(f"start executing step {action_number}")
+                    method = getattr(self.executor, action.name)
+                    method(**action.arguments)
+                    action.status = "completed"
+                    logger.info(f"execution of step {action_number} completed")
+                    self.consecutive_failures = 0
+                except CrucialException as e:
+                    logger.error(f"crucial failure in execution step {action_number}")
+                    if not self.retry_remaining_actions_next_run:
+                        action.status = "failed"
+                    raise CrucialException(e)
+                except Exception as e:
+                    logger.error(f"failed to execute step {action_number}")
+                    self.consecutive_failures += 1
+                    if not self.retry_remaining_actions_next_run:
+                        action.status = "failed"
+                    if self.consecutive_failures > self.max_consecutive_failures:
+                        raise CrucialException("max consecutive failures exceeded")
+                    else:
+                        raise Exception(e)
 
     def run(self, data: PandasDataFrame) -> None:
         self.executor.update_state()

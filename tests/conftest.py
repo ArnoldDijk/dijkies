@@ -49,8 +49,8 @@ class RSIStrategy(Strategy):
         if is_buy_signal:
             self.actions.append(
                 Action(
-                    name="place_market_buy_order",
-                    arguments={"amount_in_quote": self.state.quote_available},
+                    name="place_market_buy_order_by_fraction",
+                    arguments={"fraction_from_quote_available": 1},
                 )
             )
 
@@ -62,8 +62,8 @@ class RSIStrategy(Strategy):
         if is_sell_signal:
             self.actions.append(
                 Action(
-                    name="place_market_sell_order",
-                    arguments={"amount_in_base": self.state.base_available},
+                    name="place_market_sell_order_by_fraction",
+                    arguments={"fraction_from_base_available": 1},
                 )
             )
 

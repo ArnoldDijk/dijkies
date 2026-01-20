@@ -176,19 +176,20 @@ class Bot:
 
         try:
             strategy.execute()  # finish actions from previous run if exceptions occured
-            time.sleep(3)
+            time.sleep(3)  # make sure exchange is up to date
             strategy.run(data)
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
         except CrucialException as e:
+
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
             self.strategy_repository.change_status(
                 person_id, exchange, bot_id, status, "paused"
             )
-            raise Exception(e)
+            raise CrucialException(e)
         except Exception as e:
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status

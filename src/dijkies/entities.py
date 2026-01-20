@@ -2,7 +2,7 @@ from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel
 
-from dijkies.constants import SUPPORTED_EXCHANGES
+from dijkies.constants import ACTION_STATUS, SUPPORTED_EXCHANGES
 from dijkies.exceptions import (
     MultipleOrdersFoundError,
     NoOrderFoundError,
@@ -155,7 +155,11 @@ class Action(BaseModel):
         "place_limit_sell_order",
         "place_market_buy_order",
         "place_market_sell_order",
+        "place_limit_buy_order_by_fraction",
+        "place_limit_sell_order_by_fraction",
+        "place_market_buy_order_by_fraction",
+        "place_market_sell_order_by_fraction",
         "cancel_order",
     ]
     arguments: dict[str, Any]
-    completed: bool = False
+    status: ACTION_STATUS = "open"
