@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pandas.core.frame import DataFrame as PandasDataFrame
 
 from dijkies.deployment import Bot, LocalCredentialsRepository, LocalStrategyRepository
 from dijkies.exceptions import CrucialException
@@ -8,11 +9,11 @@ from dijkies.executors import Order, State
 from dijkies.interfaces import Strategy
 
 
-def fail_execute() -> None:
+def fail_execute(data: PandasDataFrame) -> None:
     raise Exception("BOOM")
 
 
-def fail_crucial_execute() -> None:
+def fail_crucial_execute(data: PandasDataFrame) -> None:
     raise CrucialException("BOOM")
 
 
@@ -140,7 +141,7 @@ def test_bot_run_method_crucial_failure(rsi_strategy: Strategy, tmp_path: Path) 
     bot = Bot(strategy_repository, credential_repository)
 
     # act
-    with pytest.raises(Exception):
+    with pytest.raises(CrucialException):
         bot.run(person_id, exchange, bot_id, status)
 
     # assert

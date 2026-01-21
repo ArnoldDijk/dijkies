@@ -2,7 +2,6 @@ import logging
 import os
 import pickle
 import shutil
-import time
 from pathlib import Path
 from typing import Any
 
@@ -90,19 +89,50 @@ class Bot:
         self.strategy_repository = strategy_repository
         self.credential_repository = credential_repository
 
-    def execute_manual_action(
+    def execute_manual_actions(
         self,
         person_id: str,
         exchange: SUPPORTED_EXCHANGES,
         bot_id: str,
         status: BOT_STATUS,
-        action: Action,
+        actions: list[Action],
     ) -> None:
         strategy = self.load_strategy(person_id, exchange, bot_id, status)
-        method = getattr(strategy.executor, action.name)
-        method(**action.arguments)
-        action.completed = True
-        strategy.actions.append(action)
+        n_actions = len(actions)
+        try:
+            for action_number, action in enumerate(actions):
+                method = getattr(strategy.executor, action.name)
+                method(**action.arguments)
+                action.status = "completed"
+                strategy.manual_actions.append(action)
+                logger.info(
+                    f"execution of step {action_number} / {n_actions} completed"
+                )
+            self.strategy_repository.store(
+                strategy, person_id, exchange, bot_id, status
+            )
+        except CrucialException as e:
+            logger.error(
+                f"crucial failure in execution step {action_number} / {n_actions}"
+            )
+            action.status = "failed"
+            strategy.manual_actions.append(action)
+            self.strategy_repository.store(
+                strategy, person_id, exchange, bot_id, status
+            )
+            self.strategy_repository.change_status(
+                person_id, exchange, bot_id, status, "paused"
+            )
+            raise CrucialException(e)
+
+        except Exception as e:
+            logger.error(f"failure in execution step {action_number} / {n_actions}")
+            action.status = "failed"
+            strategy.manual_actions.append(action)
+            self.strategy_repository.store(
+                strategy, person_id, exchange, bot_id, status
+            )
+            raise Exception(e)
 
     def get_strategy_info(
         self,
@@ -175,9 +205,8 @@ class Bot:
         data = data_pipeline.run()
 
         try:
-            strategy.execute()  # finish actions from previous run if exceptions occured
-            time.sleep(3)  # make sure exchange is up to date
             strategy.run(data)
+            strategy.consecutive_failures = 0
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
@@ -191,9 +220,17 @@ class Bot:
             )
             raise CrucialException(e)
         except Exception as e:
+            strategy.consecutive_failures += 1
             self.strategy_repository.store(
                 strategy, person_id, exchange, bot_id, status
             )
+            if strategy.consecutive_failures > strategy.max_consecutive_failures:
+                self.strategy_repository.change_status(
+                    person_id, exchange, bot_id, status, "paused"
+                )
+                raise CrucialException(
+                    f"to many consecutive failed runs: {strategy.consecutive_failures}"
+                )
             raise Exception(e)
 
     def stop(

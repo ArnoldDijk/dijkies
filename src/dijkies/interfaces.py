@@ -11,7 +11,6 @@ from dijkies.constants import BOT_STATUS, SUPPORTED_EXCHANGES
 from dijkies.entities import Action, Order, State
 from dijkies.exceptions import (
     AssetNotAvailableError,
-    CrucialException,
     DataTimeWindowShorterThanSuggestedAnalysisWindowError,
     InvalidExchangeAssetClientError,
     InvalidTypeForTimeColumnError,
@@ -133,51 +132,23 @@ class Strategy(ABC):
     def __init__(
         self,
         executor: ExchangeAssetClient,
-        retry_remaining_actions_next_run: bool = False,
         max_consecutive_failures: int = 3,
     ) -> None:
         self.executor = executor
         self.state = self.executor.state
-        self.actions: list[Action] = []
-        self.retry_remaining_actions_next_run = retry_remaining_actions_next_run
+        self.manual_actions: list[Action] = []
         self.consecutive_failures = 0
         self.max_consecutive_failures = max_consecutive_failures
 
     @abstractmethod
-    def make_plan(self, data: PandasDataFrame) -> None:
+    def execute(self, data: PandasDataFrame) -> None:
         pass
-
-    def execute(self) -> None:
-        for action_number, action in enumerate(self.actions):
-            if action.status == "open":
-                try:
-                    logger.info(f"start executing step {action_number}")
-                    method = getattr(self.executor, action.name)
-                    method(**action.arguments)
-                    action.status = "completed"
-                    logger.info(f"execution of step {action_number} completed")
-                    self.consecutive_failures = 0
-                except CrucialException as e:
-                    logger.error(f"crucial failure in execution step {action_number}")
-                    if not self.retry_remaining_actions_next_run:
-                        action.status = "failed"
-                    raise CrucialException(e)
-                except Exception as e:
-                    logger.error(f"failed to execute step {action_number}")
-                    self.consecutive_failures += 1
-                    if not self.retry_remaining_actions_next_run:
-                        action.status = "failed"
-                    if self.consecutive_failures > self.max_consecutive_failures:
-                        raise CrucialException("max consecutive failures exceeded")
-                    else:
-                        raise Exception(e)
 
     def run(self, data: PandasDataFrame) -> None:
         self.executor.update_state()
         if not self.executor.assets_in_state_are_available():
             raise AssetNotAvailableError(self.state.base)
-        self.make_plan(data)
-        self.execute()
+        self.execute(data)
 
     @classmethod
     def _get_strategy_params(cls) -> list[str]:
